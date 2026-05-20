@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HotelOS Live Dashboard</title>
+    <style>
+        body { margin: 0; font-family: Arial, sans-serif; background: #101827; color: #eef2ff; }
+        header { padding: 22px 28px; background: #111d33; border-bottom: 1px solid #2c3c5f; }
+        h1 { margin: 0; font-size: 26px; }
+        main { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; padding: 24px; }
+        section { background: #16213a; border: 1px solid #2c3c5f; border-radius: 14px; padding: 18px; min-height: 220px; }
+        input, button { padding: 10px; border-radius: 8px; border: none; }
+        button { cursor: pointer; background: #60a5fa; color: #051525; font-weight: bold; }
+        .event { background: #0f172a; border-left: 4px solid #60a5fa; padding: 12px; margin: 10px 0; border-radius: 8px; word-break: break-word; }
+        .small { color: #9ca3af; font-size: 13px; }
+        .full { grid-column: 1 / -1; }
+    </style>
+</head>
+<body>
+<header>
+    <h1>HotelOS Live Operations Dashboard</h1>
+    <p class="small">Connect with token <b>hotelos-demo-token</b>. Events are delivered over WebSocket without page refresh.</p>
+    <input id="token" value="hotelos-demo-token" />
+    <button onclick="connect()">Connect</button>
+    <span id="status" class="small">Not connected</span>
+</header>
+<main>
+    <section>
+        <h2>Room Status Updates</h2>
+        <div id="rooms"></div>
+    </section>
+    <section>
+        <h2>Room Service Orders</h2>
+        <div id="orders"></div>
+    </section>
+    <section>
+        <h2>Maintenance Issues</h2>
+        <div id="maintenance"></div>
+    </section>
+    <section>
+        <h2>Cleaning / Housekeeping</h2>
+        <div id="cleaning"></div>
+    </section>
+    <section class="full">
+        <h2>Raw Event Feed</h2>
+        <div id="feed"></div>
+    </section>
+</main>
+<script>
+    let socket;
+    function connect() {
+        const token = document.getElementById('token').value;
+        socket = new WebSocket(`ws://${location.host}/ws/dashboard?token=${encodeURIComponent(token)}`);
+        socket.onopen = () => document.getElementById('status').textContent = 'Connected';
+        socket.onclose = () => document.getElementById('status').textContent = 'Closed';
+        socket.onerror = () => document.getElementById('status').textContent = 'Error';
+        socket.onmessage = event => handleEvent(event.data);
+    }
+    function add(target, text) {
+        const box = document.createElement('div');
+        box.className = 'event';
+        box.textContent = text;
+        document.getElementById(target).prepend(box);
+    }
+    function handleEvent(raw) {
+        add('feed', raw);
+        try {
+            const envelope = JSON.parse(raw);
+            const key = envelope.routingKey || '';
+            if (key.includes('room.status') || key.includes('room.vacated')) add('rooms', raw);
+            if (key.includes('room.service')) add('orders', raw);
+            if (key.includes('maintenance')) add('maintenance', raw);
+            if (key.includes('room.vacated')) add('cleaning', raw);
+        } catch (e) {
+            add('feed', 'Could not parse event: ' + raw);
+        }
+    }
+</script>
+</body>
+</html>

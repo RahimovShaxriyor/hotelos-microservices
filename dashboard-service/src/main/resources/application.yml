@@ -1,0 +1,12 @@
+server:
+  port: 8085
+spring:
+  application:
+    name: dashboard-service
+  rabbitmq:
+    host: ${SPRING_RABBITMQ_HOST:localhost}
+    port: 5672
+    username: guest
+    password: guest
+hotelos:
+  dashboard-token: ${DASHBOARD_TOKEN:hotelos-demo-token}

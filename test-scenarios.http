@@ -1,0 +1,32 @@
+### TS-01 Check-in double room on floor 3
+POST http://localhost:8081/api/reception/check-in
+Content-Type: application/json
+
+{"guestName":"Diana Otayeva","roomType":"DOUBLE","nights":2,"preferredFloor":3,"proximityPreference":"LIFT"}
+
+### TS-02 Check-out room 204
+POST http://localhost:8081/api/reception/check-out/204
+
+### TS-02 Verify housekeeping queue
+GET http://localhost:8082/api/housekeeping/queue
+
+### TS-03 Start cleaning 204
+POST http://localhost:8082/api/housekeeping/rooms/204/start
+
+### TS-03 Mark 204 clean
+POST http://localhost:8082/api/housekeeping/rooms/204/clean
+
+### TS-04 Create room service order
+POST http://localhost:8083/api/room-service/orders
+Content-Type: application/json
+
+{"roomNumber":"301","items":[{"name":"Coffee","quantity":2,"unitPrice":4.50},{"name":"Sandwich","quantity":1,"unitPrice":8.00}]}
+
+### TS-05 Create critical maintenance issue
+POST http://localhost:8084/api/maintenance/issues
+Content-Type: application/json
+
+{"roomNumber":"115","description":"Broken shower","priority":"CRITICAL"}
+
+### TS-08 Invalid room number
+POST http://localhost:8081/api/reception/check-out/999

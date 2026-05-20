@@ -1,0 +1,89 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: hotelos-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+
+  reception-service:
+    build: ./reception-service
+    container_name: hotelos-reception
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    ports:
+      - "8081:8081"
+    environment:
+      SPRING_RABBITMQ_HOST: rabbitmq
+
+  housekeeping-service:
+    build: ./housekeeping-service
+    container_name: hotelos-housekeeping
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    ports:
+      - "8082:8082"
+    environment:
+      SPRING_RABBITMQ_HOST: rabbitmq
+
+  room-service:
+    build: ./room-service
+    container_name: hotelos-room-service
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    ports:
+      - "8083:8083"
+    environment:
+      SPRING_RABBITMQ_HOST: rabbitmq
+
+  maintenance-service:
+    build: ./maintenance-service
+    container_name: hotelos-maintenance
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    ports:
+      - "8084:8084"
+    environment:
+      SPRING_RABBITMQ_HOST: rabbitmq
+
+  dashboard-service:
+    build: ./dashboard-service
+    container_name: hotelos-dashboard
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    ports:
+      - "8085:8085"
+    environment:
+      SPRING_RABBITMQ_HOST: rabbitmq
+      DASHBOARD_TOKEN: hotelos-demo-token
+
+  gateway-service:
+    build: ./gateway-service
+    container_name: hotelos-gateway
+    depends_on:
+      - reception-service
+      - housekeeping-service
+      - room-service
+      - maintenance-service
+    ports:
+      - "8090:8090"
+    environment:
+      RECEPTION_SERVICE_URL: http://reception-service:8081
+      HOUSEKEEPING_SERVICE_URL: http://housekeeping-service:8082
+      ROOM_SERVICE_URL: http://room-service:8083
+      MAINTENANCE_SERVICE_URL: http://maintenance-service:8084
+      DASHBOARD_SERVICE_URL: http://dashboard-service:8085
+      HOTELOS_AUTH_TOKEN: hotelos-demo-token

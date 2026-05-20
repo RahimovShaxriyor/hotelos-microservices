@@ -1,0 +1,10 @@
+server:
+  port: 8084
+spring:
+  application:
+    name: maintenance-service
+  rabbitmq:
+    host: ${SPRING_RABBITMQ_HOST:localhost}
+    port: 5672
+    username: guest
+    password: guest

@@ -1,0 +1,167 @@
+### HotelOS Gateway / Swagger enhanced test scenarios
+### Start the system first:
+### docker compose up --build
+### Swagger UI: http://localhost:8090/swagger-ui.html
+
+### Gateway health
+GET http://localhost:8090/api/gateway/health
+
+### Gateway info
+GET http://localhost:8090/api/gateway/info
+
+### Gateway routes
+GET http://localhost:8090/api/gateway/routes
+
+### Auth login
+POST http://localhost:8090/api/auth/login
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "admin123"
+}
+
+### Auth validate
+GET http://localhost:8090/api/auth/validate?token=hotelos-demo-token
+
+### Demo reset
+POST http://localhost:8090/api/demo/reset
+
+### Demo seed
+POST http://localhost:8090/api/demo/seed
+
+### Dashboard snapshot
+GET http://localhost:8090/api/dashboard/snapshot
+
+### Reception rooms
+GET http://localhost:8090/api/reception/rooms
+
+### Reception room by number
+GET http://localhost:8090/api/reception/rooms/204
+
+### Available double rooms on floor 3
+GET http://localhost:8090/api/reception/rooms/available?roomType=DOUBLE&floor=3
+
+### TS-01 check-in
+POST http://localhost:8090/api/reception/check-in
+Content-Type: application/json
+
+{
+  "guestName": "Diana Otayeva",
+  "roomType": "DOUBLE",
+  "nights": 2,
+  "preferredFloor": 3,
+  "proximityPreference": "LIFT"
+}
+
+### Guests
+GET http://localhost:8090/api/reception/guests
+
+### Guest by room
+GET http://localhost:8090/api/reception/guests/by-room/301
+
+### Bill calculate
+POST http://localhost:8090/api/reception/bills/301/calculate
+
+### TS-02 check-out 204
+POST http://localhost:8090/api/reception/check-out/204
+
+### Housekeeping queue
+GET http://localhost:8090/api/housekeeping/queue
+
+### TS-03 start cleaning 204
+POST http://localhost:8090/api/housekeeping/rooms/204/start
+
+### TS-03 mark clean 204
+POST http://localhost:8090/api/housekeeping/rooms/204/clean
+
+### Housekeeping cleaners
+GET http://localhost:8090/api/housekeeping/cleaners
+
+### Cancel cleaning queue item
+PATCH http://localhost:8090/api/housekeeping/queue/204/cancel
+
+### Create room service order
+POST http://localhost:8090/api/room-service/orders
+Content-Type: application/json
+
+{
+  "roomNumber": "301",
+  "items": [
+    {"name": "Coffee", "quantity": 2, "unitPrice": 4.50},
+    {"name": "Sandwich", "quantity": 1, "unitPrice": 8.00}
+  ]
+}
+
+### Get room service orders
+GET http://localhost:8090/api/room-service/orders
+
+### Get order by ID - replace ORDER_ID
+GET http://localhost:8090/api/room-service/orders/ORDER_ID
+
+### Next status - replace ORDER_ID
+PATCH http://localhost:8090/api/room-service/orders/ORDER_ID/next
+
+### Cancel order - replace ORDER_ID
+PATCH http://localhost:8090/api/room-service/orders/ORDER_ID/cancel
+
+### Room service charges for 301
+GET http://localhost:8090/api/room-service/charges/301
+
+### Report maintenance issue
+POST http://localhost:8090/api/maintenance/issues
+Content-Type: application/json
+
+{
+  "roomNumber": "115",
+  "description": "Broken shower",
+  "priority": "CRITICAL"
+}
+
+### Maintenance issues
+GET http://localhost:8090/api/maintenance/issues
+
+### Maintenance queue
+GET http://localhost:8090/api/maintenance/queue
+
+### Process next maintenance issue
+POST http://localhost:8090/api/maintenance/queue/process-next
+
+### Maintenance technicians
+GET http://localhost:8090/api/maintenance/technicians
+
+### Resolve maintenance issue - replace ISSUE_ID
+PATCH http://localhost:8090/api/maintenance/issues/ISSUE_ID/resolve
+
+### Cancel maintenance issue - replace ISSUE_ID
+PATCH http://localhost:8090/api/maintenance/issues/ISSUE_ID/cancel
+
+### Dashboard events
+GET http://localhost:8090/api/dashboard/events
+
+### Clear dashboard events
+DELETE http://localhost:8090/api/dashboard/events
+
+### Run official demo scenarios
+POST http://localhost:8090/api/demo/run/ts-01
+
+###
+POST http://localhost:8090/api/demo/run/ts-02
+
+###
+POST http://localhost:8090/api/demo/run/ts-03
+
+###
+POST http://localhost:8090/api/demo/run/ts-04
+
+###
+POST http://localhost:8090/api/demo/run/ts-05
+
+###
+POST http://localhost:8090/api/demo/run/ts-06
+
+###
+POST http://localhost:8090/api/demo/run/ts-07
+
+###
+POST http://localhost:8090/api/demo/run/ts-08

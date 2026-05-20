@@ -1,0 +1,10 @@
+f70a1e9 add gateway swagger and route proxy
+c42b8aa add dashboard event history endpoints
+b18ff19 add demo scenario endpoints
+9c71f4a add reception guest archive and billing endpoints
+813fe32 add housekeeping cancel and cleaner endpoints
+70e19d0 add room service order lookup cancel and charges
+5df40f2 add maintenance issue lookup cancel and technician endpoints
+4572baa add dashboard snapshot aggregation
+3092a6d add auth token validation
+1be92ca polish README and HTTP test scenarios

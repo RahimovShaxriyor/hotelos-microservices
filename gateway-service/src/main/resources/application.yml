@@ -1,0 +1,23 @@
+server:
+  port: 8090
+
+spring:
+  application:
+    name: gateway-service
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+  api-docs:
+    path: /v3/api-docs
+
+hotelos:
+  auth-token: ${HOTELOS_AUTH_TOKEN:hotelos-demo-token}
+  services:
+    reception-url: ${RECEPTION_SERVICE_URL:http://localhost:8081}
+    housekeeping-url: ${HOUSEKEEPING_SERVICE_URL:http://localhost:8082}
+    room-service-url: ${ROOM_SERVICE_URL:http://localhost:8083}
+    maintenance-url: ${MAINTENANCE_SERVICE_URL:http://localhost:8084}
+    dashboard-url: ${DASHBOARD_SERVICE_URL:http://localhost:8085}
