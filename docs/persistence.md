@@ -13,11 +13,11 @@
 
 | Bounded Context | Database Name | Schema Name | Dedicated Runtime DB User | Host Exposed Port | Context Scope |
 |---|---|---|---|---|---|
-| **Reception** | `hotelos` | `reception` | `reception_user` | 5434 (internal: 5432) | Rooms, guest stays, billing |
-| **Room Service** | `hotelos` | `room_service` | `room_service_user` | 5434 (internal: 5432) | Orders, menu items, charges |
-| **Housekeeping** | `hotelos` | `housekeeping` | `housekeeping_user` | 5434 (internal: 5432) | Cleaning tasks, cleaners, queue |
-| **Maintenance** | `hotelos` | `maintenance` | `maintenance_user` | 5434 (internal: 5432) | Issues, technicians, priority queue |
-| **Dashboard** | `hotelos` | `dashboard_read` | `dashboard_user` | 5434 (internal: 5432) | Read models & audit log (future P1) |
+| **Reception** | `hotelos` | `reception` | `reception_user` | 5434 (internal: 5432) | **PERSISTED** (P1.1): Rooms, guest stays, billing ledger |
+| **Room Service** | `hotelos` | `room_service` | `room_service_user` | 5434 (internal: 5432) | NOT MIGRATED YET (P1.2): Orders, menu items, charges |
+| **Housekeeping** | `hotelos` | `housekeeping` | `housekeeping_user` | 5434 (internal: 5432) | NOT MIGRATED YET (P1.3): Cleaning tasks, cleaners, queue |
+| **Maintenance** | `hotelos` | `maintenance` | `maintenance_user` | 5434 (internal: 5432) | NOT MIGRATED YET (P1.4): Issues, technicians, priority queue |
+| **Dashboard** | `hotelos` | `dashboard_read` | `dashboard_user` | 5434 (internal: 5432) | NOT MIGRATED YET: Read models & audit log |
 | **Identity** | *Deferred to P2* | N/A | N/A | N/A | Auth & RBAC service |
 | **Gateway** | **NO DATABASE** | None | None | N/A | Stateless routing & OpenAPI boundary |
 | **hotelos-common** | **NO DATABASE** | None | None | N/A | Shared transport & event contracts |
@@ -34,21 +34,26 @@
 
 ## 3. Flyway Migration Strategy & Current State
 
-### Current Reality (P1.0 Foundation)
-- **Dependency & Version Convention**: PREPARED via Spring Boot 3.3.0 BOM (Flyway 10.13.0, `flyway-core`, `flyway-database-postgresql`).
-- **Migration Convention**: DEFINED (`src/main/resources/db/migration/V{version}__{description}.sql`).
-- **Runtime Flyway Execution**: **NOT ACTIVE YET** in P1.0. No application services run Flyway during P1.0.
-- **`flyway_schema_history`**: **DOES NOT EXIST YET** in any schema (verified via database catalog inspection).
-- **First Actual Flyway Migration**: Will be introduced in **P1.1 Reception Persistence** (`V1__init_reception_schema.sql`).
+### Current Reality (P1.1 Reception Persistence)
+- **Reception Service**: **ACTIVE**.
+  - Runtime Flyway: `flyway-core` and `flyway-database-postgresql` (managed by Spring Boot 3.3.0 BOM).
+  - Schema: `reception`.
+  - Migration: `reception-service/src/main/resources/db/migration/V1__init_reception_schema.sql`.
+  - Schema History: `reception.flyway_schema_history`.
+  - Authoritative State: PostgreSQL 16 is the sole source of truth for Rooms, GuestStays, and RoomServiceCharges.
+- **Other Services** (`room-service`, `housekeeping-service`, `maintenance-service`, `dashboard-service`):
+  - Flyway: **NOT ACTIVE YET**.
+  - Persistence: **NOT MIGRATED YET** (in-memory state preserved until P1.2..P1.4).
+  - `flyway_schema_history`: Does not exist in foreign schemas.
 
-### Future Migration Standards (P1.1+)
+### Migration Standards
 - **Location**: `<service>/src/main/resources/db/migration/`
 - **Naming Standard**: `V{version}__{description}.sql` (e.g. `V1__init_reception_schema.sql`, `V2__add_index.sql`).
 - **Append-Only & Immutable**: Once applied, migrations must never be edited. Changes require a new incremented version.
 - **Deterministic**: Migrations must contain deterministic DDL/DML and no dynamic environment branches.
 - **Baseline**: Clean databases start from `V1`; `baselineOnMigrate=false`.
 - **Clean Disabled**: `spring.flyway.clean-disabled=true` prevents accidental data drops.
-- **Isolated History Table**: When Flyway is enabled in P1.1+, each service will maintain its own `flyway_schema_history` table in its dedicated schema (configured via `spring.flyway.schemas=<service_schema>`).
+- **Isolated History Table**: Each service maintains its own `flyway_schema_history` table in its dedicated schema (`spring.flyway.schemas=<service_schema>`).
 
 ---
 

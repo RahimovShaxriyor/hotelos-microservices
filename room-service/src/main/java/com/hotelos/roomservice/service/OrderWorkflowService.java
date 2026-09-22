@@ -1,13 +1,19 @@
 package com.hotelos.roomservice.service;
 
+import com.hotelos.common.event.EventEnvelope;
+import com.hotelos.common.event.EventTypes;
+import com.hotelos.common.event.MessagingConstants;
+import com.hotelos.common.event.RoutingKeys;
+import com.hotelos.common.event.payload.RoomServiceChargePayload;
+import com.hotelos.common.event.payload.RoomServiceOrderUpdatedPayload;
 import com.hotelos.roomservice.config.RabbitConfig;
 import com.hotelos.roomservice.domain.OrderItem;
 import com.hotelos.roomservice.domain.OrderStatus;
 import com.hotelos.roomservice.domain.RoomOrder;
 import com.hotelos.roomservice.dto.CreateOrderRequest;
-import com.hotelos.roomservice.event.RoomServiceChargeEvent;
-import com.hotelos.roomservice.event.RoomServiceOrderEvent;
 import com.hotelos.roomservice.exception.HotelValidationException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Service;
 
@@ -19,6 +25,8 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 
 @Service
 public class OrderWorkflowService {
+    private static final Logger log = LoggerFactory.getLogger(OrderWorkflowService.class);
+
     private final Map<String, RoomOrder> orders = new ConcurrentHashMap<>();
     private final Queue<RoomOrder> orderQueue = new ConcurrentLinkedQueue<>();
     private final RabbitTemplate rabbitTemplate;
@@ -46,23 +54,53 @@ public class OrderWorkflowService {
 
     public RoomOrder nextStatus(String orderId) {
         RoomOrder order = getOrder(orderId);
-        if (order.getStatus() == OrderStatus.CANCELLED) {
-            throw new HotelValidationException("Cancelled orders cannot be advanced");
+        boolean justDelivered = false;
+        synchronized (order) {
+            OrderStatus oldStatus = order.getStatus();
+            if (oldStatus == OrderStatus.DELIVERED) {
+                log.warn("Illegal advance rejected for terminal order {}", orderId);
+                throw new HotelValidationException("Delivered orders cannot be advanced");
+            }
+            if (oldStatus == OrderStatus.CANCELLED) {
+                log.warn("Illegal advance rejected for cancelled order {}", orderId);
+                throw new HotelValidationException("Cancelled orders cannot be advanced");
+            }
+            order.advance();
+            OrderStatus newStatus = order.getStatus();
+            if (oldStatus == OrderStatus.DELIVERING && newStatus == OrderStatus.DELIVERED) {
+                justDelivered = true;
+                orderQueue.remove(order);
+            }
         }
-        order.advance();
+
         publishOrder(order);
-        if (order.getStatus() == OrderStatus.DELIVERED) {
-            orderQueue.remove(order);
-            rabbitTemplate.convertAndSend(RabbitConfig.EXCHANGE, RabbitConfig.ROOM_SERVICE_CHARGE,
-                    new RoomServiceChargeEvent(order.getOrderId(), order.getRoomNumber(), order.total(), Instant.now()));
+
+        if (justDelivered) {
+            log.info("Order {} transitioned to DELIVERED. Emitting room service charge.", order.getOrderId());
+            RoomServiceChargePayload payload = new RoomServiceChargePayload(
+                    order.getOrderId(),
+                    order.getRoomNumber(),
+                    order.total(),
+                    Instant.now()
+            );
+            EventEnvelope<RoomServiceChargePayload> envelope = EventEnvelope.create(
+                    EventTypes.ROOM_SERVICE_CHARGE,
+                    "room-service",
+                    order.getOrderId(),
+                    null,
+                    payload
+            );
+            rabbitTemplate.convertAndSend(MessagingConstants.HOTEL_EXCHANGE, RoutingKeys.ROOM_SERVICE_CHARGE, envelope);
         }
         return order;
     }
 
     public RoomOrder cancel(String orderId) {
         RoomOrder order = getOrder(orderId);
-        order.cancel();
-        orderQueue.remove(order);
+        synchronized (order) {
+            order.cancel();
+            orderQueue.remove(order);
+        }
         publishOrder(order);
         return order;
     }
@@ -97,8 +135,21 @@ public class OrderWorkflowService {
     }
 
     private void publishOrder(RoomOrder order) {
-        rabbitTemplate.convertAndSend(RabbitConfig.EXCHANGE, RabbitConfig.ROOM_SERVICE_ORDER_UPDATED,
-                new RoomServiceOrderEvent(order.getOrderId(), order.getRoomNumber(), order.getStatus().name(), order.total(), Instant.now()));
+        RoomServiceOrderUpdatedPayload payload = new RoomServiceOrderUpdatedPayload(
+                order.getOrderId(),
+                order.getRoomNumber(),
+                order.getStatus().name(),
+                order.total(),
+                Instant.now()
+        );
+        EventEnvelope<RoomServiceOrderUpdatedPayload> envelope = EventEnvelope.create(
+                EventTypes.ROOM_SERVICE_ORDER_UPDATED,
+                "room-service",
+                order.getOrderId(),
+                null,
+                payload
+        );
+        rabbitTemplate.convertAndSend(MessagingConstants.HOTEL_EXCHANGE, RoutingKeys.ROOM_SERVICE_ORDER_UPDATED, envelope);
     }
 
     private void validate(CreateOrderRequest request) {

@@ -1,4 +1,4 @@
-target/
+**/target/
 *.jar
 *.war
 *.ear
@@ -13,3 +13,8 @@ logs/
 
 .env
 .env.local
+
+# PostgreSQL data & dumps
+pgdata/
+*.dump
+*.sql.dump

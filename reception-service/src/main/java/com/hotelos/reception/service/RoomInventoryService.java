@@ -1,231 +1,404 @@
 package com.hotelos.reception.service;
 
+import com.hotelos.common.event.EventEnvelope;
+import com.hotelos.common.event.payload.RoomEngineeringStatusChangedPayload;
+import com.hotelos.common.event.payload.RoomHousekeepingStatusChangedPayload;
+import com.hotelos.common.event.payload.RoomServiceChargePayload;
 import com.hotelos.reception.config.RabbitConfig;
 import com.hotelos.reception.domain.*;
-import com.hotelos.reception.dto.*;
-import com.hotelos.reception.event.*;
+import com.hotelos.reception.dto.CheckInRequest;
+import com.hotelos.reception.dto.CheckInResponse;
+import com.hotelos.reception.dto.CheckOutResponse;
+import com.hotelos.reception.event.CheckInCommittedEvent;
+import com.hotelos.reception.event.CheckOutCommittedEvent;
 import com.hotelos.reception.exception.HotelValidationException;
+import com.hotelos.reception.persistence.entity.GuestStayEntity;
+import com.hotelos.reception.persistence.entity.RoomEntity;
+import com.hotelos.reception.persistence.entity.RoomServiceChargeEntity;
+import com.hotelos.reception.persistence.repository.GuestStayRepository;
+import com.hotelos.reception.persistence.repository.RoomRepository;
+import com.hotelos.reception.persistence.repository.RoomServiceChargeRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.locks.ReentrantLock;
-import java.util.stream.Collectors;
 
 @Service
 public class RoomInventoryService {
-    private final Map<String, Room> rooms = new ConcurrentHashMap<>();
-    private final Map<String, GuestStay> activeStaysByRoom = new ConcurrentHashMap<>();
-    private final Map<String, GuestStay> archivedStaysById = new ConcurrentHashMap<>();
-    private final ReentrantLock assignmentLock = new ReentrantLock();
-    private final RabbitTemplate rabbitTemplate;
-    private final BillingService billingService;
+    private static final Logger log = LoggerFactory.getLogger(RoomInventoryService.class);
 
-    public RoomInventoryService(RabbitTemplate rabbitTemplate, BillingService billingService) {
-        this.rabbitTemplate = rabbitTemplate;
+    private final RoomRepository roomRepository;
+    private final GuestStayRepository guestStayRepository;
+    private final RoomServiceChargeRepository roomServiceChargeRepository;
+    private final BillingService billingService;
+    private final ApplicationEventPublisher eventPublisher;
+
+    public RoomInventoryService(
+            RoomRepository roomRepository,
+            GuestStayRepository guestStayRepository,
+            RoomServiceChargeRepository roomServiceChargeRepository,
+            BillingService billingService,
+            ApplicationEventPublisher eventPublisher
+    ) {
+        this.roomRepository = roomRepository;
+        this.guestStayRepository = guestStayRepository;
+        this.roomServiceChargeRepository = roomServiceChargeRepository;
         this.billingService = billingService;
-        seedDemoData();
+        this.eventPublisher = eventPublisher;
     }
 
-    public synchronized Map<String, Object> resetAndSeed() {
-        rooms.clear();
-        activeStaysByRoom.clear();
-        archivedStaysById.clear();
-        seedDemoData();
+    @EventListener(ApplicationReadyEvent.class)
+    @Transactional
+    public void onStartup() {
+        if (roomRepository.count() == 0) {
+            log.info("Empty reception schema detected on startup. Initializing demo seed data...");
+            resetAndSeed();
+        } else {
+            log.info("Reception database already initialized ({} rooms present). Preserving existing persistent state.",
+                    roomRepository.count());
+        }
+    }
+
+    @Transactional
+    public Map<String, Object> resetAndSeed() {
+        roomServiceChargeRepository.deleteAllInBatch();
+        guestStayRepository.deleteAllInBatch();
+        roomRepository.deleteAllInBatch();
+
+        seedRooms();
+        seedExistingGuests();
+
+        long roomCount = roomRepository.count();
+        long activeGuestCount = guestStayRepository.findByCheckedOutAtIsNullOrderByRoomNumberAsc().size();
+
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("message", "Reception demo data has been reset");
-        result.put("rooms", rooms.size());
-        result.put("activeGuests", activeStaysByRoom.size());
+        result.put("rooms", roomCount);
+        result.put("activeGuests", activeGuestCount);
         return result;
     }
 
+    @Transactional
     public Map<String, Object> seed() {
         return resetAndSeed();
     }
 
-    private void seedDemoData() {
-        seedRooms();
-        seedExistingGuests();
-    }
-
     private void seedRooms() {
         Instant now = Instant.now();
-        add(new Room("101", 1, RoomType.SINGLE, "LIFT", new BigDecimal("90"), RoomStatus.CLEAN, now.minusSeconds(7200)));
-        add(new Room("102", 1, RoomType.DOUBLE, "STAIRS", new BigDecimal("130"), RoomStatus.CLEAN, now.minusSeconds(3600)));
-        add(new Room("103", 1, RoomType.SUITE, "LIFT", new BigDecimal("240"), RoomStatus.CLEAN, now.minusSeconds(5000)));
-        add(new Room("104", 1, RoomType.ACCESSIBLE, "LIFT", new BigDecimal("120"), RoomStatus.CLEAN, now.minusSeconds(6000)));
-        add(new Room("115", 1, RoomType.SINGLE, "STAIRS", new BigDecimal("90"), RoomStatus.CLEAN, now.minusSeconds(1000)));
-        add(new Room("201", 2, RoomType.SINGLE, "LIFT", new BigDecimal("95"), RoomStatus.CLEAN, now.minusSeconds(8000)));
-        add(new Room("202", 2, RoomType.DOUBLE, "LIFT", new BigDecimal("140"), RoomStatus.CLEAN, now.minusSeconds(9000)));
-        add(new Room("204", 2, RoomType.DOUBLE, "STAIRS", new BigDecimal("140"), RoomStatus.OCCUPIED, now.minusSeconds(9000)));
-        add(new Room("301", 3, RoomType.DOUBLE, "LIFT", new BigDecimal("150"), RoomStatus.OCCUPIED, now.minusSeconds(12000)));
-        add(new Room("302", 3, RoomType.DOUBLE, "STAIRS", new BigDecimal("150"), RoomStatus.CLEAN, now.minusSeconds(15000)));
-    }
-
-    private void add(Room room) {
-        rooms.put(room.getRoomNumber(), room);
+        List<RoomEntity> rooms = List.of(
+                new RoomEntity("101", 1, RoomType.SINGLE, "LIFT", new BigDecimal("90.00"),
+                        OccupancyStatus.VACANT, HousekeepingStatus.CLEAN, EngineeringStatus.OPERATIONAL, now.minusSeconds(7200), false, null),
+                new RoomEntity("102", 1, RoomType.DOUBLE, "STAIRS", new BigDecimal("130.00"),
+                        OccupancyStatus.VACANT, HousekeepingStatus.CLEAN, EngineeringStatus.OPERATIONAL, now.minusSeconds(3600), false, null),
+                new RoomEntity("103", 1, RoomType.SUITE, "LIFT", new BigDecimal("240.00"),
+                        OccupancyStatus.VACANT, HousekeepingStatus.CLEAN, EngineeringStatus.OPERATIONAL, now.minusSeconds(5000), false, null),
+                new RoomEntity("104", 1, RoomType.ACCESSIBLE, "LIFT", new BigDecimal("120.00"),
+                        OccupancyStatus.VACANT, HousekeepingStatus.CLEAN, EngineeringStatus.OPERATIONAL, now.minusSeconds(6000), false, null),
+                new RoomEntity("115", 1, RoomType.SINGLE, "STAIRS", new BigDecimal("90.00"),
+                        OccupancyStatus.VACANT, HousekeepingStatus.CLEAN, EngineeringStatus.OPERATIONAL, now.minusSeconds(1000), false, null),
+                new RoomEntity("201", 2, RoomType.SINGLE, "LIFT", new BigDecimal("95.00"),
+                        OccupancyStatus.VACANT, HousekeepingStatus.CLEAN, EngineeringStatus.OPERATIONAL, now.minusSeconds(8000), false, null),
+                new RoomEntity("202", 2, RoomType.DOUBLE, "LIFT", new BigDecimal("140.00"),
+                        OccupancyStatus.VACANT, HousekeepingStatus.CLEAN, EngineeringStatus.OPERATIONAL, now.minusSeconds(9000), false, null),
+                new RoomEntity("204", 2, RoomType.DOUBLE, "STAIRS", new BigDecimal("140.00"),
+                        OccupancyStatus.OCCUPIED, HousekeepingStatus.CLEAN, EngineeringStatus.OPERATIONAL, now.minusSeconds(9000), false, null),
+                new RoomEntity("301", 3, RoomType.DOUBLE, "LIFT", new BigDecimal("150.00"),
+                        OccupancyStatus.OCCUPIED, HousekeepingStatus.CLEAN, EngineeringStatus.OPERATIONAL, now.minusSeconds(12000), false, null),
+                new RoomEntity("302", 3, RoomType.DOUBLE, "STAIRS", new BigDecimal("150.00"),
+                        OccupancyStatus.VACANT, HousekeepingStatus.CLEAN, EngineeringStatus.OPERATIONAL, now.minusSeconds(15000), false, null)
+        );
+        roomRepository.saveAll(rooms);
     }
 
     private void seedExistingGuests() {
-        activeStaysByRoom.put("204", new GuestStay("John Smith", "204", 2));
-        activeStaysByRoom.put("301", new GuestStay("Sara Lee", "301", 3));
+        Instant now = Instant.now();
+        List<GuestStayEntity> stays = List.of(
+                new GuestStayEntity(UUID.randomUUID(), "204", "John Smith", LocalDate.now(), 2,
+                        new BigDecimal("140.00"), now.minusSeconds(9000)),
+                new GuestStayEntity(UUID.randomUUID(), "301", "Sara Lee", LocalDate.now(), 3,
+                        new BigDecimal("150.00"), now.minusSeconds(12000))
+        );
+        guestStayRepository.saveAll(stays);
     }
 
+    @Transactional(readOnly = true)
     public List<Room> getRooms() {
-        return rooms.values().stream().sorted(Comparator.comparing(Room::getRoomNumber)).toList();
+        return roomRepository.findAllByOrderByRoomNumberAsc().stream()
+                .map(Room::fromEntity)
+                .toList();
     }
 
+    @Transactional(readOnly = true)
     public Room getRoom(String roomNumber) {
         validateKnownRoom(roomNumber);
-        return rooms.get(roomNumber);
+        return roomRepository.findById(roomNumber)
+                .map(Room::fromEntity)
+                .orElseThrow(() -> new HotelValidationException("Invalid room number: " + roomNumber));
     }
 
+    @Transactional(readOnly = true)
     public List<Room> getAvailableRooms(String roomType, Integer floor) {
-        return rooms.values().stream()
-                .filter(room -> room.getStatus() == RoomStatus.CLEAN)
-                .filter(room -> roomType == null || roomType.isBlank() || room.getType() == parseRoomType(roomType))
-                .filter(room -> floor == null || room.getFloor() == floor)
-                .sorted(Comparator.comparing(Room::getCleanSince).thenComparing(Room::getRoomNumber))
+        RoomType parsedType = (roomType != null && !roomType.isBlank()) ? parseRoomType(roomType) : null;
+        return roomRepository.findAllByOrderByRoomNumberAsc().stream()
+                .filter(RoomEntity::isSellable)
+                .filter(r -> parsedType == null || r.getType() == parsedType)
+                .filter(r -> floor == null || r.getFloor() == floor)
+                .sorted(Comparator.comparing(RoomEntity::getCleanSince, Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(RoomEntity::getRoomNumber))
+                .map(Room::fromEntity)
                 .toList();
     }
 
+    @Transactional(readOnly = true)
     public List<GuestStay> getGuests() {
-        return activeStaysByRoom.values().stream()
-                .sorted(Comparator.comparing(GuestStay::getRoomNumber))
+        return guestStayRepository.findByCheckedOutAtIsNullOrderByRoomNumberAsc().stream()
+                .map(s -> GuestStay.fromEntity(s, roomServiceChargeRepository.sumChargesByStayId(s.getId())))
                 .toList();
     }
 
+    @Transactional(readOnly = true)
     public GuestStay getGuestByRoom(String roomNumber) {
         validateKnownRoom(roomNumber);
-        GuestStay stay = activeStaysByRoom.get(roomNumber);
-        if (stay == null) {
-            throw new HotelValidationException("No active guest in room " + roomNumber);
-        }
-        return stay;
+        return guestStayRepository.findByRoomNumberAndCheckedOutAtIsNull(roomNumber)
+                .map(s -> GuestStay.fromEntity(s, roomServiceChargeRepository.sumChargesByStayId(s.getId())))
+                .orElseThrow(() -> new HotelValidationException("No active guest in room " + roomNumber));
     }
 
+    @Transactional
     public GuestStay archiveGuest(String guestId) {
-        GuestStay stay = activeStaysByRoom.values().stream()
-                .filter(item -> item.getStayId().equals(guestId))
-                .findFirst()
+        UUID stayUuid;
+        try {
+            stayUuid = UUID.fromString(guestId);
+        } catch (Exception e) {
+            throw new HotelValidationException("Unknown guest stay ID: " + guestId);
+        }
+
+        GuestStayEntity stay = guestStayRepository.findById(stayUuid)
+                .filter(s -> !s.isCheckedOut())
                 .orElseThrow(() -> new HotelValidationException("Unknown guest stay ID: " + guestId));
-        stay.archive();
-        archivedStaysById.put(stay.getStayId(), stay);
-        return stay;
+
+        stay.setArchived(true);
+        guestStayRepository.save(stay);
+
+        BigDecimal rsCharges = roomServiceChargeRepository.sumChargesByStayId(stay.getId());
+        return GuestStay.fromEntity(stay, rsCharges);
     }
 
+    @Transactional(readOnly = true)
     public Map<String, Object> calculateBillForRoom(String roomNumber) {
         validateKnownRoom(roomNumber);
-        GuestStay stay = activeStaysByRoom.get(roomNumber);
-        if (stay == null) {
-            throw new HotelValidationException("No active guest stay for room " + roomNumber);
-        }
-        BigDecimal total = billingService.calculateBill(rooms.get(roomNumber), stay);
+        GuestStayEntity stay = guestStayRepository.findByRoomNumberAndCheckedOutAtIsNull(roomNumber)
+                .orElseThrow(() -> new HotelValidationException("No active guest stay for room " + roomNumber));
+
+        BigDecimal rsCharges = roomServiceChargeRepository.sumChargesByStayId(stay.getId());
+        BigDecimal total = billingService.calculateBill(stay, rsCharges);
+
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("roomNumber", roomNumber);
         result.put("guestName", stay.getGuestName());
         result.put("bookedNights", stay.getBookedNights());
-        result.put("roomServiceCharges", stay.getRoomServiceCharges());
+        result.put("roomServiceCharges", rsCharges);
         result.put("total", total);
         return result;
     }
 
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public CheckInResponse checkIn(CheckInRequest request) {
         validateCheckIn(request);
         RoomType requestedType = parseRoomType(request.getRoomType());
-        assignmentLock.lock();
-        try {
-            List<Room> typeAndClean = rooms.values().stream()
-                    .filter(room -> room.getType() == requestedType)
-                    .filter(room -> room.getStatus() == RoomStatus.CLEAN)
-                    .collect(Collectors.toList());
 
-            if (typeAndClean.isEmpty()) {
-                throw new HotelValidationException("No rooms available for requested type");
-            }
+        // Row-level locking candidate selection: selects best candidate with FOR UPDATE SKIP LOCKED
+        Optional<RoomEntity> candidate = roomRepository.findAvailableRoomForUpdate(
+                requestedType.name(),
+                request.getPreferredFloor(),
+                request.getProximityPreference()
+        );
 
-            List<Room> preferredFloorRooms = typeAndClean;
-            if (request.getPreferredFloor() != null) {
-                List<Room> sameFloor = typeAndClean.stream()
-                        .filter(room -> room.getFloor() == request.getPreferredFloor())
-                        .collect(Collectors.toList());
-                if (!sameFloor.isEmpty()) {
-                    preferredFloorRooms = sameFloor;
-                }
-            }
-
-            Room selected = preferredFloorRooms.stream()
-                    .min((left, right) -> compareByLongestCleanThenProximity(left, right, request.getProximityPreference()))
-                    .orElseThrow(() -> new HotelValidationException("No rooms available"));
-
-            selected.markOccupied();
-            GuestStay stay = new GuestStay(request.getGuestName().trim(), selected.getRoomNumber(), request.getNights());
-            activeStaysByRoom.put(selected.getRoomNumber(), stay);
-            publishRoomStatus(selected.getRoomNumber(), RoomStatus.OCCUPIED);
-            return new CheckInResponse(stay.getStayId(), stay.getGuestName(), selected.getRoomNumber(),
-                    selected.getType().name(), selected.getStatus().name(), "Guest checked in successfully");
-        } finally {
-            assignmentLock.unlock();
+        if (candidate.isEmpty()) {
+            throw new HotelValidationException("No rooms available for requested type");
         }
+
+        RoomEntity selected = candidate.get();
+        selected.occupy();
+        roomRepository.save(selected);
+
+        GuestStayEntity stay = new GuestStayEntity(
+                UUID.randomUUID(),
+                selected.getRoomNumber(),
+                request.getGuestName().trim(),
+                LocalDate.now(),
+                request.getNights(),
+                selected.getNightlyRate(),
+                Instant.now()
+        );
+        guestStayRepository.save(stay);
+
+        // Raise local event: Rabbit publish happens AFTER_COMMIT
+        eventPublisher.publishEvent(new CheckInCommittedEvent(selected.getRoomNumber(), selected.getOccupancyStatus()));
+
+        log.info("Check-in committed for guest {} in room {}", stay.getGuestName(), selected.getRoomNumber());
+
+        return new CheckInResponse(
+                stay.getId().toString(),
+                stay.getGuestName(),
+                selected.getRoomNumber(),
+                selected.getType().name(),
+                selected.getOccupancyStatus(),
+                "Guest checked in successfully"
+        );
     }
 
-    private int compareByLongestCleanThenProximity(Room left, Room right, String proximityPreference) {
-        int cleanCompare = left.getCleanSince().compareTo(right.getCleanSince());
-        if (cleanCompare != 0) {
-            return cleanCompare;
-        }
-        if (proximityPreference == null || proximityPreference.isBlank()) {
-            return left.getRoomNumber().compareTo(right.getRoomNumber());
-        }
-        boolean leftMatches = proximityPreference.equalsIgnoreCase(left.getProximity());
-        boolean rightMatches = proximityPreference.equalsIgnoreCase(right.getProximity());
-        if (leftMatches == rightMatches) {
-            return left.getRoomNumber().compareTo(right.getRoomNumber());
-        }
-        return leftMatches ? -1 : 1;
-    }
-
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public CheckOutResponse checkOut(String roomNumber) {
         validateKnownRoom(roomNumber);
-        Room room = rooms.get(roomNumber);
-        GuestStay stay = activeStaysByRoom.get(roomNumber);
-        if (stay == null || stay.isCheckedOut()) {
-            throw new HotelValidationException("No active guest stay for room " + roomNumber);
-        }
-        BigDecimal total = billingService.calculateBill(room, stay);
-        stay.checkOut();
-        archivedStaysById.put(stay.getStayId(), stay);
-        activeStaysByRoom.remove(roomNumber);
-        room.markDirty();
-        rabbitTemplate.convertAndSend(RabbitConfig.EXCHANGE, RabbitConfig.ROOM_VACATED,
-                new RoomVacatedEvent(roomNumber, Instant.now()));
-        publishRoomStatus(roomNumber, RoomStatus.DIRTY);
+
+        // Lock hierarchy: 1. RoomEntity, 2. GuestStayEntity
+        RoomEntity room = roomRepository.findByRoomNumberForUpdate(roomNumber)
+                .orElseThrow(() -> new HotelValidationException("Invalid room number: " + roomNumber));
+
+        GuestStayEntity stay = guestStayRepository.findActiveStayForUpdate(roomNumber)
+                .orElseThrow(() -> new HotelValidationException("No active guest stay for room " + roomNumber));
+
+        BigDecimal rsCharges = roomServiceChargeRepository.sumChargesByStayId(stay.getId());
+        BigDecimal total = billingService.calculateBill(stay, rsCharges);
+
+        stay.setCheckedOutAt(Instant.now());
+        guestStayRepository.save(stay);
+
+        // Check-out business operation correlation ID shared by related events and turnover lifecycle
+        String correlationId = UUID.randomUUID().toString();
+
+        // Atomically vacate occupancy and arm turnoverPending with this turnover correlation ID
+        room.vacate(correlationId);
+        roomRepository.save(room);
+
+        // Raise local event: Rabbit publish happens AFTER_COMMIT
+        eventPublisher.publishEvent(new CheckOutCommittedEvent(roomNumber, correlationId));
+
+        log.info("Checkout committed for room {} (stay {}), bill total {}", roomNumber, stay.getId(), total);
+
         return new CheckOutResponse(roomNumber, stay.getGuestName(), total, "Guest checked out and room vacated event published");
     }
 
-    @RabbitListener(queues = RabbitConfig.RECEPTION_ROOM_STATUS_QUEUE)
-    public void onRoomStatusChanged(RoomStatusChangedEvent event) {
-        Room room = rooms.get(event.roomNumber());
-        if (room != null) {
-            room.updateStatus(RoomStatus.valueOf(event.status()), event.changedAt());
+    @RabbitListener(queues = RabbitConfig.RECEPTION_HOUSEKEEPING_STATUS_QUEUE)
+    @Transactional
+    public void onHousekeepingStatusChanged(EventEnvelope<RoomHousekeepingStatusChangedPayload> event) {
+        RoomHousekeepingStatusChangedPayload payload = event.payload();
+        String roomNumber = payload.roomNumber();
+
+        Optional<RoomEntity> roomOpt = roomRepository.findByRoomNumberForUpdate(roomNumber);
+        if (roomOpt.isEmpty()) {
+            log.warn("Room {} not found for housekeeping status update", roomNumber);
+            return;
         }
+
+        RoomEntity room = roomOpt.get();
+        HousekeepingStatus newStatus = HousekeepingStatus.valueOf(payload.housekeepingStatus());
+        Instant changedAt = payload.changedAt() != null ? payload.changedAt() : Instant.now();
+
+        if (room.isTurnoverPending()) {
+            if (newStatus == HousekeepingStatus.CLEAN) {
+                if (event.correlationId() != null && event.correlationId().equals(room.getTurnoverCorrelationId())) {
+                    room.applyHousekeepingStatus(newStatus, changedAt, event.correlationId());
+                    roomRepository.save(room);
+                    log.info("Turnover pending cleared for room {} with matching correlationId {}", roomNumber, event.correlationId());
+                } else {
+                    log.warn("Ignoring stale CLEAN event for room {} with correlationId {}. Current turnover correlationId is {}",
+                            roomNumber, event.correlationId(), room.getTurnoverCorrelationId());
+                    // Stale CLEAN ignored completely: do NOT update housekeeping_status, do NOT update clean_since, do NOT clear turnoverPending!
+                }
+            } else {
+                room.applyHousekeepingStatus(newStatus, changedAt, event.correlationId());
+                roomRepository.save(room);
+            }
+        } else {
+            room.applyHousekeepingStatus(newStatus, changedAt, event.correlationId());
+            roomRepository.save(room);
+        }
+        // HARD ARCHITECTURAL RULE: Consumer projection MUST NOT republish!
+    }
+
+    @RabbitListener(queues = RabbitConfig.RECEPTION_ENGINEERING_STATUS_QUEUE)
+    @Transactional
+    public void onEngineeringStatusChanged(EventEnvelope<RoomEngineeringStatusChangedPayload> event) {
+        RoomEngineeringStatusChangedPayload payload = event.payload();
+        EngineeringStatus newStatus = EngineeringStatus.valueOf(payload.engineeringStatus());
+        roomRepository.updateEngineeringStatus(payload.roomNumber(), newStatus);
+        // HARD ARCHITECTURAL RULE: Consumer projection MUST NOT republish!
     }
 
     @RabbitListener(queues = RabbitConfig.RECEPTION_CHARGE_QUEUE)
-    public void onRoomServiceCharge(RoomServiceChargeEvent event) {
-        GuestStay stay = activeStaysByRoom.get(event.roomNumber());
-        if (stay != null) {
-            stay.addRoomServiceCharge(event.amount());
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public void onRoomServiceCharge(EventEnvelope<RoomServiceChargePayload> event) {
+        RoomServiceChargePayload payload = event.payload();
+        String orderId = payload.orderId();
+        if (orderId == null || orderId.isBlank()) {
+            log.warn("Received room service charge without orderId, ignoring: {}", payload);
+            return;
         }
-    }
 
-    private void publishRoomStatus(String roomNumber, RoomStatus status) {
-        rabbitTemplate.convertAndSend(RabbitConfig.EXCHANGE, RabbitConfig.ROOM_STATUS_CHANGED,
-                new RoomStatusChangedEvent(roomNumber, status.name(), Instant.now()));
+        Instant chargeTime = payload.chargedAt() != null ? payload.chargedAt() : event.occurredAt();
+        if (chargeTime == null) {
+            chargeTime = Instant.now();
+        }
+
+        // Resolve historical stay active at the time the charge occurred (eliminating room reuse race)
+        List<GuestStayEntity> candidateStays = guestStayRepository.findStaysForRoomAtTime(payload.roomNumber(), chargeTime);
+        if (candidateStays.isEmpty()) {
+            log.warn("No historical guest stay found for room {} at charge timestamp {}. Charge NOT applied for order {}. orderId remains unconsumed.",
+                    payload.roomNumber(), chargeTime, orderId);
+            return;
+        }
+        if (candidateStays.size() > 1) {
+            log.error("Multiple overlapping stays found for room {} at charge timestamp {}. Data integrity error! Aborting charge for order {}.",
+                    payload.roomNumber(), chargeTime, orderId);
+            return;
+        }
+
+        GuestStayEntity stay = candidateStays.get(0);
+
+        // Lock stay row to serialize against concurrent checkout bill calculation
+        guestStayRepository.findByIdForUpdate(stay.getId());
+
+        // Atomic PostgreSQL deduplication: INSERT ... ON CONFLICT (order_id) DO NOTHING
+        UUID chargeId = UUID.randomUUID();
+        int affected = roomServiceChargeRepository.insertChargeOnConflictDoNothing(
+                chargeId,
+                orderId,
+                stay.getId(),
+                payload.amount(),
+                event.eventId(),
+                chargeTime
+        );
+
+        if (affected == 1) {
+            log.info("Applied room service charge of {} for order {} to stay {} (room {})",
+                    payload.amount(), orderId, stay.getId(), payload.roomNumber());
+        } else {
+            // Conflict detected on unique order_id: fetch existing row to verify idempotency consistency
+            Optional<RoomServiceChargeEntity> existingOpt = roomServiceChargeRepository.findByOrderId(orderId);
+            if (existingOpt.isPresent()) {
+                RoomServiceChargeEntity existing = existingOpt.get();
+                if (existing.getStayId().equals(stay.getId()) && existing.getAmount().compareTo(payload.amount()) == 0) {
+                    log.info("Duplicate room service charge ignored for orderId: {}", orderId);
+                } else {
+                    log.error("Duplicate orderId {} received with conflicting payload (data inconsistency). Existing stay={}, amount={}; incoming stay={}, amount={}. Charge rejected.",
+                            orderId, existing.getStayId(), existing.getAmount(), stay.getId(), payload.amount());
+                }
+            } else {
+                log.info("Duplicate room service charge ignored for orderId: {}", orderId);
+            }
+        }
     }
 
     private void validateCheckIn(CheckInRequest request) {
@@ -253,7 +426,7 @@ public class RoomInventoryService {
     }
 
     private void validateKnownRoom(String roomNumber) {
-        if (roomNumber == null || !rooms.containsKey(roomNumber)) {
+        if (roomNumber == null || !roomRepository.existsById(roomNumber)) {
             throw new HotelValidationException("Invalid room number: " + roomNumber);
         }
     }

@@ -387,7 +387,7 @@ public class GatewayController {
     public ResponseEntity<JsonNode> runTs03() {
         ObjectNode body = objectMapper.createObjectNode();
         body.set("checkout204", safePostBody(receptionClient, "/api/reception/check-out/204", null));
-        body.set("ensureQueue", safePostBody(housekeepingClient, "/api/housekeeping/queue/204", null));
+        body.set("housekeepingQueue", getBody(housekeepingClient, "/api/housekeeping/queue"));
         body.set("startCleaning", safePostBody(housekeepingClient, "/api/housekeeping/rooms/204/start", null));
         body.set("markClean", safePostBody(housekeepingClient, "/api/housekeeping/rooms/204/clean", null));
         return ResponseEntity.ok(body);
@@ -406,9 +406,9 @@ public class GatewayController {
         String orderId = order.get("orderId").asText();
         ObjectNode body = objectMapper.createObjectNode();
         body.set("created", order);
-        body.set("preparing", postBody(roomServiceClient, "/api/room-service/orders/" + orderId + "/next", null));
-        body.set("delivering", postBody(roomServiceClient, "/api/room-service/orders/" + orderId + "/next", null));
-        body.set("delivered", postBody(roomServiceClient, "/api/room-service/orders/" + orderId + "/next", null));
+        body.set("preparing", patchBody(roomServiceClient, "/api/room-service/orders/" + orderId + "/next", null));
+        body.set("delivering", patchBody(roomServiceClient, "/api/room-service/orders/" + orderId + "/next", null));
+        body.set("delivered", patchBody(roomServiceClient, "/api/room-service/orders/" + orderId + "/next", null));
         return ResponseEntity.ok(body);
     }
 
@@ -471,6 +471,10 @@ public class GatewayController {
 
     private JsonNode postBody(RestClient client, String uri, Object body) {
         return post(client, uri, body).getBody();
+    }
+
+    private JsonNode patchBody(RestClient client, String uri, Object body) {
+        return patch(client, uri, body).getBody();
     }
 
     private JsonNode safePostBody(RestClient client, String uri, Object body) {

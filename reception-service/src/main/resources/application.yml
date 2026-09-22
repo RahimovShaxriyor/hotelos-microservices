@@ -3,6 +3,24 @@ server:
 spring:
   application:
     name: reception-service
+  datasource:
+    url: ${RECEPTION_DB_URL:jdbc:postgresql://localhost:5434/hotelos}
+    username: ${RECEPTION_DB_USER:reception_user}
+    password: ${RECEPTION_DB_PASSWORD:reception_dev_pass}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        default_schema: reception
+  flyway:
+    enabled: true
+    default-schema: reception
+    schemas: reception
+    baseline-on-migrate: false
+    clean-disabled: true
   rabbitmq:
     host: ${SPRING_RABBITMQ_HOST:localhost}
     port: 5672

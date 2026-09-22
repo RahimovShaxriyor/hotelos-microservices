@@ -7,6 +7,7 @@
     <packaging>pom</packaging>
 
     <modules>
+        <module>hotelos-common</module>
         <module>reception-service</module>
         <module>housekeeping-service</module>
         <module>room-service</module>
@@ -28,6 +29,11 @@
                 <version>${spring.boot.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>com.hotelos</groupId>
+                <artifactId>hotelos-common</artifactId>
+                <version>${project.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

@@ -1,5 +1,6 @@
 package com.hotelos.dashboard.config;
 
+import com.hotelos.common.event.MessagingConstants;
 import org.springframework.amqp.core.*;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -10,7 +11,7 @@ import org.springframework.context.annotation.Configuration;
 
 @Configuration
 public class RabbitConfig {
-    public static final String EXCHANGE = "hotel.exchange";
+    public static final String EXCHANGE = MessagingConstants.HOTEL_EXCHANGE;
     public static final String DASHBOARD_QUEUE = "dashboard.all.events";
 
     @Bean

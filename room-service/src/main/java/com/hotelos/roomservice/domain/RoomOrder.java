@@ -1,5 +1,7 @@
 package com.hotelos.roomservice.domain;
 
+import com.hotelos.roomservice.exception.HotelValidationException;
+
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -33,17 +35,29 @@ public class RoomOrder {
         return items.stream().map(OrderItem::lineTotal).reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    public void advance() {
+    public synchronized void advance() {
+        if (status == OrderStatus.DELIVERED) {
+            throw new HotelValidationException("Delivered orders cannot be advanced");
+        }
+        if (status == OrderStatus.CANCELLED) {
+            throw new HotelValidationException("Cancelled orders cannot be advanced");
+        }
         this.status = switch (status) {
             case RECEIVED -> OrderStatus.PREPARING;
             case PREPARING -> OrderStatus.DELIVERING;
-            case DELIVERING, DELIVERED -> OrderStatus.DELIVERED;
-            case CANCELLED -> OrderStatus.CANCELLED;
+            case DELIVERING -> OrderStatus.DELIVERED;
+            default -> throw new HotelValidationException("Unsupported order transition from " + status);
         };
         this.updatedAt = Instant.now();
     }
 
-    public void cancel() {
+    public synchronized void cancel() {
+        if (status == OrderStatus.DELIVERED) {
+            throw new HotelValidationException("Delivered orders cannot be cancelled");
+        }
+        if (status == OrderStatus.CANCELLED) {
+            throw new HotelValidationException("Order is already cancelled");
+        }
         this.status = OrderStatus.CANCELLED;
         this.updatedAt = Instant.now();
     }

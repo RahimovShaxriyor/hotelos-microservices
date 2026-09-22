@@ -1,11 +1,16 @@
 package com.hotelos.maintenance.service;
 
-import com.hotelos.maintenance.config.RabbitConfig;
+import com.hotelos.common.event.EventEnvelope;
+import com.hotelos.common.event.EventTypes;
+import com.hotelos.common.event.MessagingConstants;
+import com.hotelos.common.event.RoutingKeys;
+import com.hotelos.common.event.payload.MaintenanceIssueUpdatedPayload;
+import com.hotelos.common.event.payload.RoomEngineeringStatusChangedPayload;
 import com.hotelos.maintenance.domain.*;
 import com.hotelos.maintenance.dto.CreateIssueRequest;
-import com.hotelos.maintenance.event.MaintenanceIssueEvent;
-import com.hotelos.maintenance.event.RoomStatusChangedEvent;
 import com.hotelos.maintenance.exception.HotelValidationException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Service;
 
@@ -15,10 +20,15 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class MaintenanceWorkflowService {
-    private final Map<String, MaintenanceIssue> issues = new ConcurrentHashMap<>();
-    private final PriorityQueue<MaintenanceIssue> priorityQueue = new PriorityQueue<>(
+    private static final Logger log = LoggerFactory.getLogger(MaintenanceWorkflowService.class);
+
+    private final Object queueLock = new Object();
+    private static final Comparator<MaintenanceIssue> PRIORITY_COMPARATOR =
             Comparator.comparingInt((MaintenanceIssue issue) -> issue.getPriority().getRank())
-                    .thenComparing(MaintenanceIssue::getCreatedAt));
+                    .thenComparing(MaintenanceIssue::getCreatedAt);
+
+    private final Map<String, MaintenanceIssue> issues = new ConcurrentHashMap<>();
+    private final PriorityQueue<MaintenanceIssue> priorityQueue = new PriorityQueue<>(PRIORITY_COMPARATOR);
     private final Queue<String> availableTechnicians = new ArrayDeque<>(List.of("Tech-1", "Tech-2"));
     private final List<String> allTechnicians = List.of("Tech-1", "Tech-2");
     private final RabbitTemplate rabbitTemplate;
@@ -27,15 +37,21 @@ public class MaintenanceWorkflowService {
         this.rabbitTemplate = rabbitTemplate;
     }
 
-    public synchronized MaintenanceIssue report(CreateIssueRequest request) {
+    public MaintenanceIssue report(CreateIssueRequest request) {
         validate(request);
         IssuePriority priority = IssuePriority.valueOf(request.getPriority().toUpperCase(Locale.ROOT));
         MaintenanceIssue issue = new MaintenanceIssue(request.getRoomNumber(), request.getDescription(), priority);
         issues.put(issue.getIssueId(), issue);
-        priorityQueue.add(issue);
-        publishRoomStatus(issue.getRoomNumber(), "MAINTENANCE");
-        assignNextIfPossible();
+        List<MaintenanceIssue> assignedIssues = new ArrayList<>();
+        synchronized (queueLock) {
+            priorityQueue.add(issue);
+            assignNextIfPossible(assignedIssues);
+        }
+        publishEngineeringStatus(issue.getRoomNumber(), EngineeringStatus.OUT_OF_ORDER);
         publishIssue(issue);
+        for (MaintenanceIssue assigned : assignedIssues) {
+            publishIssue(assigned);
+        }
         return issue;
     }
 
@@ -47,32 +63,54 @@ public class MaintenanceWorkflowService {
         return issue;
     }
 
-    public synchronized MaintenanceIssue resolve(String issueId) {
+    public MaintenanceIssue resolve(String issueId) {
         MaintenanceIssue issue = getIssue(issueId);
         if (issue.getStatus() == IssueStatus.CANCELLED) {
             throw new HotelValidationException("Cancelled maintenance issue cannot be resolved");
         }
-        issue.resolve();
-        releaseTechnician(issue);
+        List<MaintenanceIssue> assignedIssues = new ArrayList<>();
+        synchronized (queueLock) {
+            issue.resolve();
+            releaseTechnician(issue);
+            assignNextIfPossible(assignedIssues);
+        }
         publishIssue(issue);
-        publishRoomStatus(issue.getRoomNumber(), "CLEAN");
-        assignNextIfPossible();
+        publishEngineeringStatus(issue.getRoomNumber(), EngineeringStatus.OPERATIONAL);
+        for (MaintenanceIssue assigned : assignedIssues) {
+            publishIssue(assigned);
+        }
         return issue;
     }
 
-    public synchronized MaintenanceIssue cancel(String issueId) {
+    public MaintenanceIssue cancel(String issueId) {
         MaintenanceIssue issue = getIssue(issueId);
-        priorityQueue.remove(issue);
-        issue.cancel();
-        releaseTechnician(issue);
+        List<MaintenanceIssue> assignedIssues = new ArrayList<>();
+        synchronized (queueLock) {
+            priorityQueue.remove(issue);
+            issue.cancel();
+            releaseTechnician(issue);
+            assignNextIfPossible(assignedIssues);
+        }
         publishIssue(issue);
-        assignNextIfPossible();
+        for (MaintenanceIssue assigned : assignedIssues) {
+            publishIssue(assigned);
+        }
         return issue;
     }
 
-    public synchronized List<MaintenanceIssue> processNext() {
-        assignNextIfPossible();
-        return getPriorityQueueSnapshot();
+    public List<MaintenanceIssue> processNext() {
+        List<MaintenanceIssue> assignedIssues = new ArrayList<>();
+        List<MaintenanceIssue> snapshot;
+        synchronized (queueLock) {
+            assignNextIfPossible(assignedIssues);
+            snapshot = priorityQueue.stream()
+                    .sorted(PRIORITY_COMPARATOR)
+                    .toList();
+        }
+        for (MaintenanceIssue assigned : assignedIssues) {
+            publishIssue(assigned);
+        }
+        return snapshot;
     }
 
     public List<String> getTechnicians() {
@@ -84,17 +122,20 @@ public class MaintenanceWorkflowService {
     }
 
     public List<MaintenanceIssue> getPriorityQueueSnapshot() {
-        return priorityQueue.stream()
-                .sorted(Comparator.comparingInt((MaintenanceIssue issue) -> issue.getPriority().getRank())
-                        .thenComparing(MaintenanceIssue::getCreatedAt))
-                .toList();
+        synchronized (queueLock) {
+            return priorityQueue.stream()
+                    .sorted(PRIORITY_COMPARATOR)
+                    .toList();
+        }
     }
 
-    public synchronized Map<String, Object> reset() {
+    public Map<String, Object> reset() {
         issues.clear();
-        priorityQueue.clear();
-        availableTechnicians.clear();
-        availableTechnicians.addAll(allTechnicians);
+        synchronized (queueLock) {
+            priorityQueue.clear();
+            availableTechnicians.clear();
+            availableTechnicians.addAll(allTechnicians);
+        }
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("message", "Maintenance issues and priority queue have been cleared");
         result.put("issues", issues.size());
@@ -108,14 +149,29 @@ public class MaintenanceWorkflowService {
         }
     }
 
-    private void assignNextIfPossible() {
+    private void assignNextIfPossible(List<MaintenanceIssue> newlyAssigned) {
         while (!priorityQueue.isEmpty() && !availableTechnicians.isEmpty()) {
-            MaintenanceIssue issue = priorityQueue.poll();
-            if (issue.getStatus() == IssueStatus.OPEN) {
-                String technician = availableTechnicians.poll();
-                issue.assign(technician);
-                publishIssue(issue);
+            MaintenanceIssue peek = priorityQueue.peek();
+            if (peek == null) {
+                break;
             }
+            if (peek.getStatus() != IssueStatus.OPEN) {
+                priorityQueue.poll();
+                continue;
+            }
+            String technician = availableTechnicians.poll();
+            if (technician == null) {
+                log.info("No technicians currently available; issue {} remains queued", peek.getIssueId());
+                break;
+            }
+            MaintenanceIssue issue = priorityQueue.poll();
+            if (issue == null) {
+                availableTechnicians.offer(technician);
+                break;
+            }
+            issue.assign(technician);
+            log.info("Assigned technician {} to issue {} for room {}", technician, issue.getIssueId(), issue.getRoomNumber());
+            newlyAssigned.add(issue);
         }
     }
 
@@ -134,13 +190,33 @@ public class MaintenanceWorkflowService {
     }
 
     private void publishIssue(MaintenanceIssue issue) {
-        rabbitTemplate.convertAndSend(RabbitConfig.EXCHANGE, RabbitConfig.MAINTENANCE_ISSUE_UPDATED,
-                new MaintenanceIssueEvent(issue.getIssueId(), issue.getRoomNumber(), issue.getPriority().name(),
-                        issue.getStatus().name(), issue.getAssignedTechnician(), Instant.now()));
+        MaintenanceIssueUpdatedPayload payload = new MaintenanceIssueUpdatedPayload(
+                issue.getIssueId(),
+                issue.getRoomNumber(),
+                issue.getPriority().name(),
+                issue.getStatus().name(),
+                issue.getAssignedTechnician(),
+                Instant.now()
+        );
+        EventEnvelope<MaintenanceIssueUpdatedPayload> envelope = EventEnvelope.create(
+                EventTypes.MAINTENANCE_ISSUE_UPDATED,
+                "maintenance-service",
+                issue.getIssueId(),
+                null,
+                payload
+        );
+        rabbitTemplate.convertAndSend(MessagingConstants.HOTEL_EXCHANGE, RoutingKeys.MAINTENANCE_ISSUE_UPDATED, envelope);
     }
 
-    private void publishRoomStatus(String roomNumber, String status) {
-        rabbitTemplate.convertAndSend(RabbitConfig.EXCHANGE, RabbitConfig.ROOM_STATUS_CHANGED,
-                new RoomStatusChangedEvent(roomNumber, status, Instant.now()));
+    private void publishEngineeringStatus(String roomNumber, EngineeringStatus status) {
+        RoomEngineeringStatusChangedPayload payload = new RoomEngineeringStatusChangedPayload(roomNumber, status.name(), Instant.now());
+        EventEnvelope<RoomEngineeringStatusChangedPayload> envelope = EventEnvelope.create(
+                EventTypes.ROOM_ENGINEERING_CHANGED,
+                "maintenance-service",
+                roomNumber,
+                null,
+                payload
+        );
+        rabbitTemplate.convertAndSend(MessagingConstants.HOTEL_EXCHANGE, RoutingKeys.ROOM_ENGINEERING_CHANGED, envelope);
     }
 }

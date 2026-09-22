@@ -68,10 +68,10 @@
         try {
             const envelope = JSON.parse(raw);
             const key = envelope.routingKey || '';
-            if (key.includes('room.status') || key.includes('room.vacated')) add('rooms', raw);
+            if (key.includes('occupancy') || key.includes('room.vacated') || key.includes('housekeeping') || key.includes('maintenance.room')) add('rooms', raw);
             if (key.includes('room.service')) add('orders', raw);
             if (key.includes('maintenance')) add('maintenance', raw);
-            if (key.includes('room.vacated')) add('cleaning', raw);
+            if (key.includes('room.vacated') || key.includes('housekeeping')) add('cleaning', raw);
         } catch (e) {
             add('feed', 'Could not parse event: ' + raw);
         }

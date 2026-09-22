@@ -1,8 +1,11 @@
 package com.hotelos.reception.config;
 
+import com.hotelos.common.event.MessagingConstants;
+import com.hotelos.common.event.RoutingKeys;
 import org.springframework.amqp.core.*;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.amqp.support.converter.Jackson2JavaTypeMapper;
 import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
 import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -11,22 +14,23 @@ import org.springframework.context.annotation.Configuration;
 
 @Configuration
 public class RabbitConfig {
-    public static final String EXCHANGE = "hotel.exchange";
-    public static final String ROOM_VACATED = "room.vacated";
-    public static final String ROOM_STATUS_CHANGED = "room.status.changed";
-    public static final String ROOM_SERVICE_CHARGE = "room.service.charge";
-
-    public static final String RECEPTION_ROOM_STATUS_QUEUE = "reception.room.status.changed";
+    public static final String RECEPTION_HOUSEKEEPING_STATUS_QUEUE = "reception.housekeeping.room.status.changed";
+    public static final String RECEPTION_ENGINEERING_STATUS_QUEUE = "reception.maintenance.room.status.changed";
     public static final String RECEPTION_CHARGE_QUEUE = "reception.room.service.charge";
 
     @Bean
     public TopicExchange hotelExchange() {
-        return new TopicExchange(EXCHANGE, true, false);
+        return new TopicExchange(MessagingConstants.HOTEL_EXCHANGE, true, false);
     }
 
     @Bean
-    public Queue receptionRoomStatusQueue() {
-        return QueueBuilder.durable(RECEPTION_ROOM_STATUS_QUEUE).build();
+    public Queue receptionHousekeepingStatusQueue() {
+        return QueueBuilder.durable(RECEPTION_HOUSEKEEPING_STATUS_QUEUE).build();
+    }
+
+    @Bean
+    public Queue receptionEngineeringStatusQueue() {
+        return QueueBuilder.durable(RECEPTION_ENGINEERING_STATUS_QUEUE).build();
     }
 
     @Bean
@@ -35,18 +39,25 @@ public class RabbitConfig {
     }
 
     @Bean
-    public Binding roomStatusBinding(TopicExchange hotelExchange, @Qualifier("receptionRoomStatusQueue") Queue receptionRoomStatusQueue) {
-        return BindingBuilder.bind(receptionRoomStatusQueue).to(hotelExchange).with(ROOM_STATUS_CHANGED);
+    public Binding housekeepingStatusBinding(TopicExchange hotelExchange, @Qualifier("receptionHousekeepingStatusQueue") Queue receptionHousekeepingStatusQueue) {
+        return BindingBuilder.bind(receptionHousekeepingStatusQueue).to(hotelExchange).with(RoutingKeys.ROOM_HOUSEKEEPING_CHANGED);
+    }
+
+    @Bean
+    public Binding engineeringStatusBinding(TopicExchange hotelExchange, @Qualifier("receptionEngineeringStatusQueue") Queue receptionEngineeringStatusQueue) {
+        return BindingBuilder.bind(receptionEngineeringStatusQueue).to(hotelExchange).with(RoutingKeys.ROOM_ENGINEERING_CHANGED);
     }
 
     @Bean
     public Binding chargeBinding(TopicExchange hotelExchange, @Qualifier("receptionChargeQueue") Queue receptionChargeQueue) {
-        return BindingBuilder.bind(receptionChargeQueue).to(hotelExchange).with(ROOM_SERVICE_CHARGE);
+        return BindingBuilder.bind(receptionChargeQueue).to(hotelExchange).with(RoutingKeys.ROOM_SERVICE_CHARGE);
     }
 
     @Bean
     public MessageConverter jsonMessageConverter() {
-        return new Jackson2JsonMessageConverter();
+        Jackson2JsonMessageConverter converter = new Jackson2JsonMessageConverter();
+        converter.setTypePrecedence(Jackson2JavaTypeMapper.TypePrecedence.INFERRED);
+        return converter;
     }
 
     @Bean

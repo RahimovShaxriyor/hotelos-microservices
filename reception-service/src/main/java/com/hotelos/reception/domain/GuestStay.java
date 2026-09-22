@@ -1,8 +1,9 @@
 package com.hotelos.reception.domain;
 
+import com.hotelos.reception.persistence.entity.GuestStayEntity;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.util.UUID;
 
 public class GuestStay {
     private final String stayId;
@@ -10,19 +11,44 @@ public class GuestStay {
     private final String roomNumber;
     private final LocalDate checkInDate;
     private final int bookedNights;
-    private BigDecimal roomServiceCharges = BigDecimal.ZERO;
-    private BigDecimal minibarCharge = BigDecimal.ZERO;
-    private BigDecimal lateCheckoutFee = BigDecimal.ZERO;
-    private BigDecimal discount = BigDecimal.ZERO;
-    private boolean checkedOut;
-    private boolean archived;
+    private final BigDecimal roomServiceCharges;
+    private final BigDecimal minibarCharge;
+    private final BigDecimal lateCheckoutFee;
+    private final BigDecimal discount;
+    private final boolean checkedOut;
+    private final boolean archived;
 
-    public GuestStay(String guestName, String roomNumber, int bookedNights) {
-        this.stayId = UUID.randomUUID().toString();
+    public GuestStay(String stayId, String guestName, String roomNumber, LocalDate checkInDate, int bookedNights,
+                     BigDecimal roomServiceCharges, BigDecimal minibarCharge, BigDecimal lateCheckoutFee,
+                     BigDecimal discount, boolean checkedOut, boolean archived) {
+        this.stayId = stayId;
         this.guestName = guestName;
         this.roomNumber = roomNumber;
+        this.checkInDate = checkInDate;
         this.bookedNights = bookedNights;
-        this.checkInDate = LocalDate.now();
+        this.roomServiceCharges = roomServiceCharges != null ? roomServiceCharges : BigDecimal.ZERO;
+        this.minibarCharge = minibarCharge != null ? minibarCharge : BigDecimal.ZERO;
+        this.lateCheckoutFee = lateCheckoutFee != null ? lateCheckoutFee : BigDecimal.ZERO;
+        this.discount = discount != null ? discount : BigDecimal.ZERO;
+        this.checkedOut = checkedOut;
+        this.archived = archived;
+    }
+
+    public static GuestStay fromEntity(GuestStayEntity entity, BigDecimal roomServiceCharges) {
+        if (entity == null) return null;
+        return new GuestStay(
+                entity.getId().toString(),
+                entity.getGuestName(),
+                entity.getRoomNumber(),
+                entity.getCheckInDate(),
+                entity.getBookedNights(),
+                roomServiceCharges != null ? roomServiceCharges : BigDecimal.ZERO,
+                entity.getMinibarCharge(),
+                entity.getLateCheckoutFee(),
+                entity.getDiscount(),
+                entity.isCheckedOut(),
+                entity.isArchived()
+        );
     }
 
     public String getStayId() { return stayId; }
@@ -36,16 +62,4 @@ public class GuestStay {
     public BigDecimal getDiscount() { return discount; }
     public boolean isCheckedOut() { return checkedOut; }
     public boolean isArchived() { return archived; }
-
-    public void addRoomServiceCharge(BigDecimal amount) {
-        this.roomServiceCharges = this.roomServiceCharges.add(amount);
-    }
-
-    public void checkOut() {
-        this.checkedOut = true;
-    }
-
-    public void archive() {
-        this.archived = true;
-    }
 }

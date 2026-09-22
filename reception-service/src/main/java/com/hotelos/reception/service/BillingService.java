@@ -1,21 +1,22 @@
 package com.hotelos.reception.service;
 
-import com.hotelos.reception.domain.GuestStay;
-import com.hotelos.reception.domain.Room;
+import com.hotelos.reception.persistence.entity.GuestStayEntity;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 
 @Service
 public class BillingService {
-    public BigDecimal calculateBill(Room room, GuestStay stay) {
+
+    public BigDecimal calculateBill(GuestStayEntity stay, BigDecimal roomServiceCharges) {
         int chargedNights = Math.max(1, stay.getBookedNights());
-        BigDecimal roomCost = room.getNightlyRate().multiply(BigDecimal.valueOf(chargedNights));
+        BigDecimal roomCost = stay.getNightlyRateAtCheckin().multiply(BigDecimal.valueOf(chargedNights));
+        BigDecimal charges = roomServiceCharges != null ? roomServiceCharges : BigDecimal.ZERO;
         BigDecimal total = roomCost
-                .add(stay.getRoomServiceCharges())
-                .add(stay.getMinibarCharge())
-                .add(stay.getLateCheckoutFee())
-                .subtract(stay.getDiscount());
+                .add(charges)
+                .add(stay.getMinibarCharge() != null ? stay.getMinibarCharge() : BigDecimal.ZERO)
+                .add(stay.getLateCheckoutFee() != null ? stay.getLateCheckoutFee() : BigDecimal.ZERO)
+                .subtract(stay.getDiscount() != null ? stay.getDiscount() : BigDecimal.ZERO);
         return total.max(BigDecimal.ZERO);
     }
 }

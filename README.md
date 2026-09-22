@@ -6,16 +6,30 @@ HotelOS is a simplified but working microservice project for the BTEC Programmin
 
 ```text
 HotelOS
-├── gateway-service        :8090  Swagger + unified API entry point
+├── gateway-service        :8090  Swagger + unified API entry point (no DB)
 ├── reception-service      :8081  rooms, check-in, check-out, billing, guests
 ├── housekeeping-service   :8082  cleaning queue and cleaner workflow
 ├── room-service           :8083  food/drink orders and room charges
 ├── maintenance-service    :8084  maintenance issues and priority queue
 ├── dashboard-service      :8085  WebSocket dashboard + event history
-└── rabbitmq               :5672  event broker, management UI on :15672
+├── rabbitmq               :5672  event broker, management UI on :15672
+└── postgres               :5434  PostgreSQL 16 (schema-per-service isolation)
 ```
 
 Services communicate through RabbitMQ events for hotel operations. The gateway is used for easy testing and Swagger documentation.
+
+## Persistence Foundation (P1.0)
+
+HotelOS uses PostgreSQL 16 (`postgres:16-alpine`) with a single logical database `hotelos` and strict **schema-per-bounded-context** logical isolation aligned with HLD:
+- `reception` schema owned by `reception_user`
+- `room_service` schema owned by `room_service_user`
+- `housekeeping` schema owned by `housekeeping_user`
+- `maintenance` schema owned by `maintenance_user`
+- `dashboard_read` schema owned by `dashboard_user` (read models)
+- `gateway-service` and `hotelos-common` have NO database.
+
+Cross-schema business database queries and foreign keys are strictly prohibited. Application schema DDL is owned exclusively by Flyway migrations (`V{version}__{description}.sql`), with Hibernate auto-DDL disabled (`ddl-auto=validate`).
+See `docs/persistence.md` for full persistence architecture, modeling standards, and operational workflows.
 
 ## Run the project
 

@@ -32,6 +32,14 @@ public class GatewayExceptionHandler {
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(body);
     }
 
+    @ExceptionHandler(org.springframework.web.HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<JsonNode> handleMethodNotAllowed(org.springframework.web.HttpRequestMethodNotSupportedException ex) {
+        ObjectNode body = objectMapper.createObjectNode();
+        body.put("error", "Method Not Allowed");
+        body.put("message", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).body(body);
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<JsonNode> handleUnexpected(Exception ex) {
         ObjectNode body = objectMapper.createObjectNode();

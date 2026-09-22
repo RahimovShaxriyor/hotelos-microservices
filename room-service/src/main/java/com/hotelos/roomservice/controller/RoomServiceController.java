@@ -33,12 +33,7 @@ public class RoomServiceController {
     }
 
     @PatchMapping("/orders/{orderId}/next")
-    public RoomOrder nextPatch(@PathVariable String orderId) {
-        return orderWorkflowService.nextStatus(orderId);
-    }
-
-    @PostMapping("/orders/{orderId}/next")
-    public RoomOrder nextPost(@PathVariable String orderId) {
+    public RoomOrder nextStatus(@PathVariable String orderId) {
         return orderWorkflowService.nextStatus(orderId);
     }
 

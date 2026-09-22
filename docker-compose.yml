@@ -1,4 +1,37 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: hotelos-postgres
+    ports:
+      - "${POSTGRES_PORT:-5434}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-hotelos}
+      RECEPTION_SCHEMA: ${RECEPTION_SCHEMA:-reception}
+      RECEPTION_DB_USER: ${RECEPTION_DB_USER:-reception_user}
+      RECEPTION_DB_PASSWORD: ${RECEPTION_DB_PASSWORD:-reception_dev_pass}
+      ROOM_SERVICE_SCHEMA: ${ROOM_SERVICE_SCHEMA:-room_service}
+      ROOM_SERVICE_DB_USER: ${ROOM_SERVICE_DB_USER:-room_service_user}
+      ROOM_SERVICE_DB_PASSWORD: ${ROOM_SERVICE_DB_PASSWORD:-room_service_dev_pass}
+      HOUSEKEEPING_SCHEMA: ${HOUSEKEEPING_SCHEMA:-housekeeping}
+      HOUSEKEEPING_DB_USER: ${HOUSEKEEPING_DB_USER:-housekeeping_user}
+      HOUSEKEEPING_DB_PASSWORD: ${HOUSEKEEPING_DB_PASSWORD:-housekeeping_dev_pass}
+      MAINTENANCE_SCHEMA: ${MAINTENANCE_SCHEMA:-maintenance}
+      MAINTENANCE_DB_USER: ${MAINTENANCE_DB_USER:-maintenance_user}
+      MAINTENANCE_DB_PASSWORD: ${MAINTENANCE_DB_PASSWORD:-maintenance_dev_pass}
+      DASHBOARD_SCHEMA: ${DASHBOARD_SCHEMA:-dashboard_read}
+      DASHBOARD_DB_USER: ${DASHBOARD_DB_USER:-dashboard_user}
+      DASHBOARD_DB_PASSWORD: ${DASHBOARD_DB_PASSWORD:-dashboard_dev_pass}
+    volumes:
+      - hotelos-postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-hotelos}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   rabbitmq:
     image: rabbitmq:3.13-management
     container_name: hotelos-rabbitmq
@@ -15,18 +48,27 @@ services:
       retries: 8
 
   reception-service:
-    build: ./reception-service
+    build:
+      context: .
+      dockerfile: ./reception-service/Dockerfile
     container_name: hotelos-reception
     depends_on:
       rabbitmq:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     ports:
       - "8081:8081"
     environment:
       SPRING_RABBITMQ_HOST: rabbitmq
+      RECEPTION_DB_URL: jdbc:postgresql://postgres:5432/hotelos
+      RECEPTION_DB_USER: ${RECEPTION_DB_USER:-reception_user}
+      RECEPTION_DB_PASSWORD: ${RECEPTION_DB_PASSWORD:-reception_dev_pass}
 
   housekeeping-service:
-    build: ./housekeeping-service
+    build:
+      context: .
+      dockerfile: ./housekeeping-service/Dockerfile
     container_name: hotelos-housekeeping
     depends_on:
       rabbitmq:
@@ -37,7 +79,9 @@ services:
       SPRING_RABBITMQ_HOST: rabbitmq
 
   room-service:
-    build: ./room-service
+    build:
+      context: .
+      dockerfile: ./room-service/Dockerfile
     container_name: hotelos-room-service
     depends_on:
       rabbitmq:
@@ -48,7 +92,9 @@ services:
       SPRING_RABBITMQ_HOST: rabbitmq
 
   maintenance-service:
-    build: ./maintenance-service
+    build:
+      context: .
+      dockerfile: ./maintenance-service/Dockerfile
     container_name: hotelos-maintenance
     depends_on:
       rabbitmq:
@@ -59,7 +105,9 @@ services:
       SPRING_RABBITMQ_HOST: rabbitmq
 
   dashboard-service:
-    build: ./dashboard-service
+    build:
+      context: .
+      dockerfile: ./dashboard-service/Dockerfile
     container_name: hotelos-dashboard
     depends_on:
       rabbitmq:
@@ -71,7 +119,9 @@ services:
       DASHBOARD_TOKEN: hotelos-demo-token
 
   gateway-service:
-    build: ./gateway-service
+    build:
+      context: .
+      dockerfile: ./gateway-service/Dockerfile
     container_name: hotelos-gateway
     depends_on:
       - reception-service
@@ -87,3 +137,6 @@ services:
       MAINTENANCE_SERVICE_URL: http://maintenance-service:8084
       DASHBOARD_SERVICE_URL: http://dashboard-service:8085
       HOTELOS_AUTH_TOKEN: hotelos-demo-token
+
+volumes:
+  hotelos-postgres-data:
