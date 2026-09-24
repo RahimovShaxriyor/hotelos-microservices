@@ -73,10 +73,15 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
     ports:
       - "8082:8082"
     environment:
       SPRING_RABBITMQ_HOST: rabbitmq
+      HOUSEKEEPING_DB_URL: jdbc:postgresql://postgres:5432/hotelos
+      HOUSEKEEPING_DB_USER: ${HOUSEKEEPING_DB_USER:-housekeeping_user}
+      HOUSEKEEPING_DB_PASSWORD: ${HOUSEKEEPING_DB_PASSWORD:-housekeeping_dev_pass}
 
   room-service:
     build:

@@ -22,6 +22,16 @@ public class CleaningTask {
         this.updatedAt = this.createdAt;
     }
 
+    public CleaningTask(String roomNumber, String correlationId, CleaningStatus status,
+                        Instant createdAt, Instant updatedAt, String assignedCleaner) {
+        this.roomNumber = roomNumber;
+        this.correlationId = correlationId;
+        this.status = status;
+        this.createdAt = createdAt;
+        this.updatedAt = updatedAt;
+        this.assignedCleaner = assignedCleaner;
+    }
+
     public String getRoomNumber() {
         return roomNumber;
     }

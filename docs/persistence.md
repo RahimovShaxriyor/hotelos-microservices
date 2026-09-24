@@ -14,8 +14,8 @@
 | Bounded Context | Database Name | Schema Name | Dedicated Runtime DB User | Host Exposed Port | Context Scope |
 |---|---|---|---|---|---|
 | **Reception** | `hotelos` | `reception` | `reception_user` | 5434 (internal: 5432) | **PERSISTED** (P1.1): Rooms, guest stays, billing ledger |
-| **Room Service** | `hotelos` | `room_service` | `room_service_user` | 5434 (internal: 5432) | NOT MIGRATED YET (P1.2): Orders, menu items, charges |
-| **Housekeeping** | `hotelos` | `housekeeping` | `housekeeping_user` | 5434 (internal: 5432) | NOT MIGRATED YET (P1.3): Cleaning tasks, cleaners, queue |
+| **Room Service** | `hotelos` | `room_service` | `room_service_user` | 5434 (internal: 5432) | **PERSISTED** (P1.2): Orders, order items, lifecycle timestamps |
+| **Housekeeping** | `hotelos` | `housekeeping` | `housekeeping_user` | 5434 (internal: 5432) | **PERSISTED** (P1.3): Cleaning tasks, room states, turnover correlation |
 | **Maintenance** | `hotelos` | `maintenance` | `maintenance_user` | 5434 (internal: 5432) | NOT MIGRATED YET (P1.4): Issues, technicians, priority queue |
 | **Dashboard** | `hotelos` | `dashboard_read` | `dashboard_user` | 5434 (internal: 5432) | NOT MIGRATED YET: Read models & audit log |
 | **Identity** | *Deferred to P2* | N/A | N/A | N/A | Auth & RBAC service |
@@ -34,16 +34,25 @@
 
 ## 3. Flyway Migration Strategy & Current State
 
-### Current Reality (P1.1 Reception Persistence)
-- **Reception Service**: **ACTIVE**.
+### Current Reality (P1.3 Housekeeping Persistence)
+- **Reception Service**: **ACTIVE** (P1.1).
   - Runtime Flyway: `flyway-core` and `flyway-database-postgresql` (managed by Spring Boot 3.3.0 BOM).
   - Schema: `reception`.
   - Migration: `reception-service/src/main/resources/db/migration/V1__init_reception_schema.sql`.
   - Schema History: `reception.flyway_schema_history`.
-  - Authoritative State: PostgreSQL 16 is the sole source of truth for Rooms, GuestStays, and RoomServiceCharges.
-- **Other Services** (`room-service`, `housekeeping-service`, `maintenance-service`, `dashboard-service`):
+- **Room Service**: **ACTIVE** (P1.2).
+  - Runtime Flyway: `flyway-core` and `flyway-database-postgresql`.
+  - Schema: `room_service`.
+  - Migration: `room-service/src/main/resources/db/migration/V1__init_room_service_schema.sql`.
+  - Schema History: `room_service.flyway_schema_history`.
+- **Housekeeping Service**: **ACTIVE** (P1.3).
+  - Runtime Flyway: `flyway-core` and `flyway-database-postgresql`.
+  - Schema: `housekeeping`.
+  - Migration: `housekeeping-service/src/main/resources/db/migration/V1__init_housekeeping_schema.sql`.
+  - Schema History: `housekeeping.flyway_schema_history`.
+- **Other Services** (`maintenance-service`, `dashboard-service`):
   - Flyway: **NOT ACTIVE YET**.
-  - Persistence: **NOT MIGRATED YET** (in-memory state preserved until P1.2..P1.4).
+  - Persistence: **NOT MIGRATED YET** (in-memory state preserved until P1.4).
   - `flyway_schema_history`: Does not exist in foreign schemas.
 
 ### Migration Standards

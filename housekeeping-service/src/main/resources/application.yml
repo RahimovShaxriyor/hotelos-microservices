@@ -3,6 +3,23 @@ server:
 spring:
   application:
     name: housekeeping-service
+  datasource:
+    url: ${HOUSEKEEPING_DB_URL:jdbc:postgresql://localhost:5434/hotelos?currentSchema=housekeeping}
+    username: ${HOUSEKEEPING_DB_USER:housekeeping_user}
+    password: ${HOUSEKEEPING_DB_PASSWORD:housekeeping_dev_pass}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        default_schema: housekeeping
+  flyway:
+    enabled: true
+    schemas: housekeeping
+    default-schema: housekeeping
+    create-schemas: false
   rabbitmq:
     host: ${SPRING_RABBITMQ_HOST:localhost}
     port: 5672
