@@ -3,6 +3,25 @@ server:
 spring:
   application:
     name: room-service
+  datasource:
+    url: ${ROOM_SERVICE_DB_URL:jdbc:postgresql://localhost:5434/hotelos}
+    username: ${ROOM_SERVICE_DB_USER:room_service_user}
+    password: ${ROOM_SERVICE_DB_PASSWORD:room_service_dev_pass}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        default_schema: room_service
+  flyway:
+    enabled: true
+    default-schema: room_service
+    schemas: room_service
+    create-schemas: false
+    baseline-on-migrate: false
+    clean-disabled: true
   rabbitmq:
     host: ${SPRING_RABBITMQ_HOST:localhost}
     port: 5672

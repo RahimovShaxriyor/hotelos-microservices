@@ -16,12 +16,16 @@ public class RoomOrder {
     private Instant updatedAt;
 
     public RoomOrder(String roomNumber, List<OrderItem> items) {
-        this.orderId = UUID.randomUUID().toString();
+        this(UUID.randomUUID().toString(), roomNumber, items, OrderStatus.RECEIVED, Instant.now(), Instant.now());
+    }
+
+    public RoomOrder(String orderId, String roomNumber, List<OrderItem> items, OrderStatus status, Instant createdAt, Instant updatedAt) {
+        this.orderId = orderId;
         this.roomNumber = roomNumber;
         this.items = items;
-        this.status = OrderStatus.RECEIVED;
-        this.createdAt = Instant.now();
-        this.updatedAt = this.createdAt;
+        this.status = status;
+        this.createdAt = createdAt;
+        this.updatedAt = updatedAt;
     }
 
     public String getOrderId() { return orderId; }
@@ -32,10 +36,13 @@ public class RoomOrder {
     public Instant getUpdatedAt() { return updatedAt; }
 
     public BigDecimal total() {
+        if (items == null || items.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
         return items.stream().map(OrderItem::lineTotal).reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    public synchronized void advance() {
+    public void advance() {
         if (status == OrderStatus.DELIVERED) {
             throw new HotelValidationException("Delivered orders cannot be advanced");
         }
@@ -51,7 +58,7 @@ public class RoomOrder {
         this.updatedAt = Instant.now();
     }
 
-    public synchronized void cancel() {
+    public void cancel() {
         if (status == OrderStatus.DELIVERED) {
             throw new HotelValidationException("Delivered orders cannot be cancelled");
         }

@@ -28,7 +28,7 @@ public interface GuestStayRepository extends JpaRepository<GuestStayEntity, UUID
     @Query("SELECT s FROM GuestStayEntity s WHERE s.roomNumber = :roomNumber AND s.checkedOutAt IS NULL")
     Optional<GuestStayEntity> findActiveStayForUpdate(@Param("roomNumber") String roomNumber);
 
-    @Query("SELECT s FROM GuestStayEntity s WHERE s.roomNumber = :roomNumber AND s.checkedInAt <= :chargeTime AND (s.checkedOutAt IS NULL OR s.checkedOutAt >= :chargeTime)")
+    @Query("SELECT s FROM GuestStayEntity s WHERE s.roomNumber = :roomNumber AND s.checkedInAt <= :chargeTime AND (s.checkedOutAt IS NULL OR s.checkedOutAt > :chargeTime)")
     List<GuestStayEntity> findStaysForRoomAtTime(
             @Param("roomNumber") String roomNumber,
             @Param("chargeTime") Instant chargeTime

@@ -86,10 +86,15 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
     ports:
       - "8083:8083"
     environment:
       SPRING_RABBITMQ_HOST: rabbitmq
+      ROOM_SERVICE_DB_URL: jdbc:postgresql://postgres:5432/hotelos
+      ROOM_SERVICE_DB_USER: ${ROOM_SERVICE_DB_USER:-room_service_user}
+      ROOM_SERVICE_DB_PASSWORD: ${ROOM_SERVICE_DB_PASSWORD:-room_service_dev_pass}
 
   maintenance-service:
     build:
