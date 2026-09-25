@@ -25,3 +25,16 @@ spring:
     port: 5672
     username: guest
     password: guest
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
+    listener:
+      simple:
+        concurrency: 2
+        max-concurrency: 5
+hotelos:
+  outbox:
+    poll-interval-ms: 500
+    batch-size: 10
+    confirm-timeout-ms: 3000

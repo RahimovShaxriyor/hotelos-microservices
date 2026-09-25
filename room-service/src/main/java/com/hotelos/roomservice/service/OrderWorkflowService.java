@@ -7,13 +7,20 @@ import com.hotelos.roomservice.dto.CreateOrderRequest;
 import com.hotelos.roomservice.event.LocalOrderDeliveredEvent;
 import com.hotelos.roomservice.event.LocalOrderUpdatedEvent;
 import com.hotelos.roomservice.exception.HotelValidationException;
+import com.hotelos.common.event.EventEnvelope;
+import com.hotelos.common.event.EventTypes;
+import com.hotelos.common.event.MessagingConstants;
+import com.hotelos.common.event.RoutingKeys;
+import com.hotelos.common.event.payload.RoomServiceChargePayload;
+import com.hotelos.common.event.payload.RoomServiceOrderUpdatedPayload;
+import com.hotelos.roomservice.outbox.RoomServiceOutboxService;
 import com.hotelos.roomservice.persistence.entity.OrderItemEntity;
 import com.hotelos.roomservice.persistence.entity.RoomServiceOrderEntity;
 import com.hotelos.roomservice.persistence.repository.OrderItemRepository;
 import com.hotelos.roomservice.persistence.repository.OrderRepository;
+import com.hotelos.roomservice.persistence.repository.RoomServiceOutboxRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,16 +34,19 @@ public class OrderWorkflowService {
 
     private final OrderRepository orderRepository;
     private final OrderItemRepository orderItemRepository;
-    private final ApplicationEventPublisher eventPublisher;
+    private final RoomServiceOutboxService outboxService;
+    private final RoomServiceOutboxRepository outboxRepository;
 
     public OrderWorkflowService(
             OrderRepository orderRepository,
             OrderItemRepository orderItemRepository,
-            ApplicationEventPublisher eventPublisher
+            RoomServiceOutboxService outboxService,
+            RoomServiceOutboxRepository outboxRepository
     ) {
         this.orderRepository = orderRepository;
         this.orderItemRepository = orderItemRepository;
-        this.eventPublisher = eventPublisher;
+        this.outboxService = outboxService;
+        this.outboxRepository = outboxRepository;
     }
 
     @Transactional
@@ -71,14 +81,23 @@ public class OrderWorkflowService {
 
         RoomOrder domainOrder = toDomain(orderEntity);
         String correlationId = UUID.randomUUID().toString();
-        eventPublisher.publishEvent(new LocalOrderUpdatedEvent(
-                domainOrder.getOrderId(),
-                domainOrder.getRoomNumber(),
-                domainOrder.getStatus().name(),
-                domainOrder.total(),
-                orderEntity.getStatusChangedAt(),
-                correlationId
-        ));
+        outboxService.enqueue(
+                EventEnvelope.create(
+                        EventTypes.ROOM_SERVICE_ORDER_UPDATED,
+                        "room-service",
+                        domainOrder.getOrderId(),
+                        correlationId,
+                        new RoomServiceOrderUpdatedPayload(
+                                domainOrder.getOrderId(),
+                                domainOrder.getRoomNumber(),
+                                domainOrder.getStatus().name(),
+                                domainOrder.total(),
+                                orderEntity.getStatusChangedAt()
+                        )
+                ),
+                MessagingConstants.HOTEL_EXCHANGE,
+                RoutingKeys.ROOM_SERVICE_ORDER_UPDATED
+        );
 
         return domainOrder;
     }
@@ -129,24 +148,42 @@ public class OrderWorkflowService {
         RoomOrder domainOrder = toDomain(order);
         String correlationId = UUID.randomUUID().toString();
 
-        eventPublisher.publishEvent(new LocalOrderUpdatedEvent(
-                domainOrder.getOrderId(),
-                domainOrder.getRoomNumber(),
-                domainOrder.getStatus().name(),
-                domainOrder.total(),
-                order.getStatusChangedAt(),
-                correlationId
-        ));
+        outboxService.enqueue(
+                EventEnvelope.create(
+                        EventTypes.ROOM_SERVICE_ORDER_UPDATED,
+                        "room-service",
+                        domainOrder.getOrderId(),
+                        correlationId,
+                        new RoomServiceOrderUpdatedPayload(
+                                domainOrder.getOrderId(),
+                                domainOrder.getRoomNumber(),
+                                domainOrder.getStatus().name(),
+                                domainOrder.total(),
+                                order.getStatusChangedAt()
+                        )
+                ),
+                MessagingConstants.HOTEL_EXCHANGE,
+                RoutingKeys.ROOM_SERVICE_ORDER_UPDATED
+        );
 
         if (justDelivered) {
             log.info("Order {} transitioned to DELIVERED. Scheduling room service charge.", domainOrder.getOrderId());
-            eventPublisher.publishEvent(new LocalOrderDeliveredEvent(
-                    domainOrder.getOrderId(),
-                    domainOrder.getRoomNumber(),
-                    domainOrder.total(),
-                    order.getDeliveredAt(),
-                    correlationId
-            ));
+            outboxService.enqueue(
+                    EventEnvelope.create(
+                            EventTypes.ROOM_SERVICE_CHARGE,
+                            "room-service",
+                            domainOrder.getOrderId(),
+                            correlationId,
+                            new RoomServiceChargePayload(
+                                    domainOrder.getOrderId(),
+                                    domainOrder.getRoomNumber(),
+                                    domainOrder.total(),
+                                    order.getDeliveredAt()
+                            )
+                    ),
+                    MessagingConstants.HOTEL_EXCHANGE,
+                    RoutingKeys.ROOM_SERVICE_CHARGE
+            );
         }
 
         return domainOrder;
@@ -179,14 +216,23 @@ public class OrderWorkflowService {
         RoomOrder domainOrder = toDomain(order);
         String correlationId = UUID.randomUUID().toString();
 
-        eventPublisher.publishEvent(new LocalOrderUpdatedEvent(
-                domainOrder.getOrderId(),
-                domainOrder.getRoomNumber(),
-                domainOrder.getStatus().name(),
-                domainOrder.total(),
-                order.getStatusChangedAt(),
-                correlationId
-        ));
+        outboxService.enqueue(
+                EventEnvelope.create(
+                        EventTypes.ROOM_SERVICE_ORDER_UPDATED,
+                        "room-service",
+                        domainOrder.getOrderId(),
+                        correlationId,
+                        new RoomServiceOrderUpdatedPayload(
+                                domainOrder.getOrderId(),
+                                domainOrder.getRoomNumber(),
+                                domainOrder.getStatus().name(),
+                                domainOrder.total(),
+                                order.getStatusChangedAt()
+                        )
+                ),
+                MessagingConstants.HOTEL_EXCHANGE,
+                RoutingKeys.ROOM_SERVICE_ORDER_UPDATED
+        );
 
         return domainOrder;
     }
@@ -225,7 +271,8 @@ public class OrderWorkflowService {
     public Map<String, Object> reset() {
         orderItemRepository.deleteAllInBatch();
         orderRepository.deleteAllInBatch();
-        log.info("Room service orders and items cleared via reset");
+        outboxRepository.deleteAllInBatch();
+        log.info("Room service orders, items, and outbox cleared via reset");
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("message", "Room service orders have been cleared");

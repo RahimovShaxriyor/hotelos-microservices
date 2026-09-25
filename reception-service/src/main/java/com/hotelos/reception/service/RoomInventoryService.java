@@ -1,28 +1,34 @@
 package com.hotelos.reception.service;
 
 import com.hotelos.common.event.EventEnvelope;
+import com.hotelos.common.event.EventTypes;
+import com.hotelos.common.event.MessagingConstants;
+import com.hotelos.common.event.RoutingKeys;
 import com.hotelos.common.event.payload.RoomEngineeringStatusChangedPayload;
 import com.hotelos.common.event.payload.RoomHousekeepingStatusChangedPayload;
+import com.hotelos.common.event.payload.RoomOccupancyChangedPayload;
 import com.hotelos.common.event.payload.RoomServiceChargePayload;
+import com.hotelos.common.event.payload.RoomVacatedPayload;
 import com.hotelos.reception.config.RabbitConfig;
 import com.hotelos.reception.domain.*;
 import com.hotelos.reception.dto.CheckInRequest;
 import com.hotelos.reception.dto.CheckInResponse;
 import com.hotelos.reception.dto.CheckOutResponse;
-import com.hotelos.reception.event.CheckInCommittedEvent;
-import com.hotelos.reception.event.CheckOutCommittedEvent;
 import com.hotelos.reception.exception.HotelValidationException;
+import com.hotelos.reception.inbox.ReceptionInboxService;
+import com.hotelos.reception.outbox.ReceptionOutboxService;
 import com.hotelos.reception.persistence.entity.GuestStayEntity;
 import com.hotelos.reception.persistence.entity.RoomEntity;
 import com.hotelos.reception.persistence.entity.RoomServiceChargeEntity;
 import com.hotelos.reception.persistence.repository.GuestStayRepository;
+import com.hotelos.reception.persistence.repository.ReceptionInboxRepository;
+import com.hotelos.reception.persistence.repository.ReceptionOutboxRepository;
 import com.hotelos.reception.persistence.repository.RoomRepository;
 import com.hotelos.reception.persistence.repository.RoomServiceChargeRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
@@ -41,20 +47,29 @@ public class RoomInventoryService {
     private final GuestStayRepository guestStayRepository;
     private final RoomServiceChargeRepository roomServiceChargeRepository;
     private final BillingService billingService;
-    private final ApplicationEventPublisher eventPublisher;
+    private final ReceptionOutboxService outboxService;
+    private final ReceptionOutboxRepository outboxRepository;
+    private final ReceptionInboxService inboxService;
+    private final ReceptionInboxRepository inboxRepository;
 
     public RoomInventoryService(
             RoomRepository roomRepository,
             GuestStayRepository guestStayRepository,
             RoomServiceChargeRepository roomServiceChargeRepository,
             BillingService billingService,
-            ApplicationEventPublisher eventPublisher
+            ReceptionOutboxService outboxService,
+            ReceptionOutboxRepository outboxRepository,
+            ReceptionInboxService inboxService,
+            ReceptionInboxRepository inboxRepository
     ) {
         this.roomRepository = roomRepository;
         this.guestStayRepository = guestStayRepository;
         this.roomServiceChargeRepository = roomServiceChargeRepository;
         this.billingService = billingService;
-        this.eventPublisher = eventPublisher;
+        this.outboxService = outboxService;
+        this.outboxRepository = outboxRepository;
+        this.inboxService = inboxService;
+        this.inboxRepository = inboxRepository;
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -74,6 +89,8 @@ public class RoomInventoryService {
         roomServiceChargeRepository.deleteAllInBatch();
         guestStayRepository.deleteAllInBatch();
         roomRepository.deleteAllInBatch();
+        inboxRepository.deleteAllInBatch();
+        outboxRepository.deleteAllInBatch();
 
         seedRooms();
         seedExistingGuests();
@@ -243,8 +260,15 @@ public class RoomInventoryService {
         );
         guestStayRepository.save(stay);
 
-        // Raise local event: Rabbit publish happens AFTER_COMMIT
-        eventPublisher.publishEvent(new CheckInCommittedEvent(selected.getRoomNumber(), selected.getOccupancyStatus()));
+        // Enqueue outbox event atomically within check-in transaction
+        EventEnvelope<RoomOccupancyChangedPayload> occupancyEvent = EventEnvelope.create(
+                EventTypes.ROOM_OCCUPANCY_CHANGED,
+                "reception-service",
+                selected.getRoomNumber(),
+                null,
+                new RoomOccupancyChangedPayload(selected.getRoomNumber(), selected.getOccupancyStatus().name(), Instant.now())
+        );
+        outboxService.enqueue(occupancyEvent, MessagingConstants.HOTEL_EXCHANGE, RoutingKeys.ROOM_OCCUPANCY_CHANGED);
 
         log.info("Check-in committed for guest {} in room {}", stay.getGuestName(), selected.getRoomNumber());
 
@@ -282,8 +306,25 @@ public class RoomInventoryService {
         room.vacate(correlationId);
         roomRepository.save(room);
 
-        // Raise local event: Rabbit publish happens AFTER_COMMIT
-        eventPublisher.publishEvent(new CheckOutCommittedEvent(roomNumber, correlationId));
+        Instant now = Instant.now();
+        // Enqueue occupancy changed (VACANT) and room vacated events atomically within checkout transaction
+        EventEnvelope<RoomOccupancyChangedPayload> occupancyEvent = EventEnvelope.create(
+                EventTypes.ROOM_OCCUPANCY_CHANGED,
+                "reception-service",
+                roomNumber,
+                correlationId,
+                new RoomOccupancyChangedPayload(roomNumber, OccupancyStatus.VACANT.name(), now)
+        );
+        outboxService.enqueue(occupancyEvent, MessagingConstants.HOTEL_EXCHANGE, RoutingKeys.ROOM_OCCUPANCY_CHANGED);
+
+        EventEnvelope<RoomVacatedPayload> vacatedEvent = EventEnvelope.create(
+                EventTypes.ROOM_VACATED,
+                "reception-service",
+                roomNumber,
+                correlationId,
+                new RoomVacatedPayload(roomNumber, now)
+        );
+        outboxService.enqueue(vacatedEvent, MessagingConstants.HOTEL_EXCHANGE, RoutingKeys.ROOM_VACATED);
 
         log.info("Checkout committed for room {} (stay {}), bill total {}", roomNumber, stay.getId(), total);
 
@@ -293,6 +334,11 @@ public class RoomInventoryService {
     @RabbitListener(queues = RabbitConfig.RECEPTION_HOUSEKEEPING_STATUS_QUEUE)
     @Transactional
     public void onHousekeepingStatusChanged(EventEnvelope<RoomHousekeepingStatusChangedPayload> event) {
+        ReceptionInboxService.InboxResult inboxResult = inboxService.registerEvent(event);
+        if (inboxResult != ReceptionInboxService.InboxResult.PROCEED) {
+            return;
+        }
+
         RoomHousekeepingStatusChangedPayload payload = event.payload();
         String roomNumber = payload.roomNumber();
 
@@ -331,6 +377,11 @@ public class RoomInventoryService {
     @RabbitListener(queues = RabbitConfig.RECEPTION_ENGINEERING_STATUS_QUEUE)
     @Transactional
     public void onEngineeringStatusChanged(EventEnvelope<RoomEngineeringStatusChangedPayload> event) {
+        ReceptionInboxService.InboxResult inboxResult = inboxService.registerEvent(event);
+        if (inboxResult != ReceptionInboxService.InboxResult.PROCEED) {
+            return;
+        }
+
         RoomEngineeringStatusChangedPayload payload = event.payload();
         EngineeringStatus newStatus = EngineeringStatus.valueOf(payload.engineeringStatus());
         roomRepository.updateEngineeringStatus(payload.roomNumber(), newStatus);
@@ -340,6 +391,11 @@ public class RoomInventoryService {
     @RabbitListener(queues = RabbitConfig.RECEPTION_CHARGE_QUEUE)
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public void onRoomServiceCharge(EventEnvelope<RoomServiceChargePayload> event) {
+        ReceptionInboxService.InboxResult inboxResult = inboxService.registerEvent(event);
+        if (inboxResult != ReceptionInboxService.InboxResult.PROCEED) {
+            return;
+        }
+
         RoomServiceChargePayload payload = event.payload();
         String orderId = payload.orderId();
         if (orderId == null || orderId.isBlank()) {

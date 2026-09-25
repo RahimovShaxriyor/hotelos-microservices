@@ -1,16 +1,22 @@
 package com.hotelos.housekeeping.service;
 
+import com.hotelos.common.event.EventEnvelope;
+import com.hotelos.common.event.EventTypes;
+import com.hotelos.common.event.MessagingConstants;
+import com.hotelos.common.event.RoutingKeys;
+import com.hotelos.common.event.payload.RoomHousekeepingStatusChangedPayload;
+import com.hotelos.common.event.payload.RoomVacatedPayload;
 import com.hotelos.housekeeping.domain.CleaningStatus;
 import com.hotelos.housekeeping.domain.HousekeepingStatus;
 import com.hotelos.housekeeping.domain.TaskSource;
-import com.hotelos.housekeeping.event.LocalHousekeepingStatusChangedEvent;
+import com.hotelos.housekeeping.inbox.HousekeepingInboxService;
+import com.hotelos.housekeeping.outbox.HousekeepingOutboxService;
 import com.hotelos.housekeeping.persistence.entity.CleaningTaskEntity;
 import com.hotelos.housekeeping.persistence.entity.RoomStateEntity;
 import com.hotelos.housekeeping.persistence.repository.CleaningTaskRepository;
 import com.hotelos.housekeeping.persistence.repository.RoomStateRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,14 +31,57 @@ public class TurnoverProcessor {
 
     private final RoomStateRepository roomStateRepository;
     private final CleaningTaskRepository cleaningTaskRepository;
-    private final ApplicationEventPublisher eventPublisher;
+    private final HousekeepingOutboxService outboxService;
+    private final HousekeepingInboxService inboxService;
 
     public TurnoverProcessor(RoomStateRepository roomStateRepository,
                              CleaningTaskRepository cleaningTaskRepository,
-                             ApplicationEventPublisher eventPublisher) {
+                             HousekeepingOutboxService outboxService,
+                             HousekeepingInboxService inboxService) {
         this.roomStateRepository = roomStateRepository;
         this.cleaningTaskRepository = cleaningTaskRepository;
-        this.eventPublisher = eventPublisher;
+        this.outboxService = outboxService;
+        this.inboxService = inboxService;
+    }
+
+    /**
+     * Transaction T1: Atomic Inbox registration + Turnover business mutation + Outbox status event insert.
+     * If an unhandled exception or data integrity violation occurs, T1 rolls back completely.
+     */
+    @Transactional
+    public boolean processVacatedWithInbox(EventEnvelope<RoomVacatedPayload> envelope, List<String> cleaners) {
+        HousekeepingInboxService.InboxResult inboxResult = inboxService.registerEvent(envelope);
+        if (inboxResult == HousekeepingInboxService.InboxResult.DUPLICATE || inboxResult == HousekeepingInboxService.InboxResult.CONFLICT) {
+            return false;
+        }
+
+        RoomVacatedPayload payload = envelope.payload();
+        String trimmedRoom = payload.roomNumber().trim();
+        String trimmedCorrelation = envelope.correlationId().trim();
+
+        return executeVacatedMutation(trimmedRoom, trimmedCorrelation, cleaners);
+    }
+
+    /**
+     * Transaction T2: Executed after T1 rollback to classify unique constraint conflicts on turnover_correlation_id.
+     * Durably records the event in inbox_events if handled so future redeliveries are immediate no-ops.
+     * Returns true if the violation was NOT due to turnoverCorrelationId (caller should rethrow).
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public boolean classifyAndResolveConflict(EventEnvelope<RoomVacatedPayload> envelope, String trimmedRoom, String trimmedCorrelation) {
+        Optional<CleaningTaskEntity> conflictOpt = cleaningTaskRepository.findByTurnoverCorrelationId(trimmedCorrelation);
+        if (conflictOpt.isPresent()) {
+            CleaningTaskEntity conflict = conflictOpt.get();
+            if (!conflict.getRoomNumber().equals(trimmedRoom)) {
+                log.error("DATA INCONSISTENCY: Concurrent turnover correlation {} already claimed by room {}, rejected for room {}",
+                        trimmedCorrelation, conflict.getRoomNumber(), trimmedRoom);
+            } else {
+                log.info("Concurrent duplicate turnover correlation {} ignored for room {}", trimmedCorrelation, trimmedRoom);
+            }
+            inboxService.recordConsumedEvent(envelope);
+            return false; // Handled conflict: acknowledge cleanly
+        }
+        return true; // Not a turnover correlation conflict; rethrow
     }
 
     @Transactional
@@ -73,12 +122,18 @@ public class TurnoverProcessor {
                 String statusStr = activeTask.getTaskStatus() == CleaningStatus.WAITING
                         ? HousekeepingStatus.DIRTY.name()
                         : HousekeepingStatus.CLEANING.name();
-                eventPublisher.publishEvent(new LocalHousekeepingStatusChangedEvent(
-                        trimmedRoom,
-                        statusStr,
-                        room.getStatusChangedAt(),
-                        trimmedCorrelation
-                ));
+
+                outboxService.enqueue(
+                        EventEnvelope.create(
+                                EventTypes.ROOM_HOUSEKEEPING_CHANGED,
+                                "housekeeping-service",
+                                trimmedRoom,
+                                trimmedCorrelation,
+                                new RoomHousekeepingStatusChangedPayload(trimmedRoom, statusStr, room.getStatusChangedAt())
+                        ),
+                        MessagingConstants.HOTEL_EXCHANGE,
+                        RoutingKeys.ROOM_HOUSEKEEPING_CHANGED
+                );
                 return true;
             }
         }
@@ -103,12 +158,17 @@ public class TurnoverProcessor {
         room.setCleanSince(null);
         roomStateRepository.save(room);
 
-        eventPublisher.publishEvent(new LocalHousekeepingStatusChangedEvent(
-                trimmedRoom,
-                HousekeepingStatus.DIRTY.name(),
-                now,
-                trimmedCorrelation
-        ));
+        outboxService.enqueue(
+                EventEnvelope.create(
+                        EventTypes.ROOM_HOUSEKEEPING_CHANGED,
+                        "housekeeping-service",
+                        trimmedRoom,
+                        trimmedCorrelation,
+                        new RoomHousekeepingStatusChangedPayload(trimmedRoom, HousekeepingStatus.DIRTY.name(), now)
+                ),
+                MessagingConstants.HOTEL_EXCHANGE,
+                RoutingKeys.ROOM_HOUSEKEEPING_CHANGED
+        );
         return true;
     }
 
