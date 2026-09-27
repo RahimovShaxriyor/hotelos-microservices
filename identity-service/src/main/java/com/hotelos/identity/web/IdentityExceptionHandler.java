@@ -17,6 +17,13 @@ public class IdentityExceptionHandler {
                 .body(new LoginErrorResponse("Unauthorized", "Invalid username or password"));
     }
 
+    @ExceptionHandler(com.hotelos.identity.exception.InvalidRefreshTokenException.class)
+    public ResponseEntity<LoginErrorResponse> handleInvalidRefreshToken(com.hotelos.identity.exception.InvalidRefreshTokenException ex) {
+        return ResponseEntity
+                .status(HttpStatus.UNAUTHORIZED)
+                .body(new LoginErrorResponse("Unauthorized", "Invalid refresh token"));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<LoginErrorResponse> handleGenericException(Exception ex) {
         return ResponseEntity

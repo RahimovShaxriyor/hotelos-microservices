@@ -3,7 +3,11 @@ package com.hotelos.identity.service;
 import com.hotelos.identity.domain.UserStatus;
 import com.hotelos.identity.dto.LoginRequest;
 import com.hotelos.identity.dto.LoginResponse;
+import com.hotelos.identity.dto.LogoutRequest;
+import com.hotelos.identity.dto.RefreshRequest;
+import com.hotelos.identity.dto.RefreshResponse;
 import com.hotelos.identity.exception.BadCredentialsException;
+import com.hotelos.identity.exception.InvalidRefreshTokenException;
 import com.hotelos.identity.persistence.entity.UserEntity;
 import com.hotelos.identity.persistence.repository.UserRepository;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -19,17 +23,20 @@ public class AuthService {
 
     private final UserRepository userRepository;
     private final TokenService tokenService;
+    private final RefreshTokenService refreshTokenService;
     private final AuthAuditLogService auditLogService;
     private final PasswordEncoder passwordEncoder;
 
     public AuthService(
             UserRepository userRepository,
             TokenService tokenService,
+            RefreshTokenService refreshTokenService,
             AuthAuditLogService auditLogService,
             PasswordEncoder passwordEncoder
     ) {
         this.userRepository = userRepository;
         this.tokenService = tokenService;
+        this.refreshTokenService = refreshTokenService;
         this.auditLogService = auditLogService;
         this.passwordEncoder = passwordEncoder;
     }
@@ -84,8 +91,33 @@ public class AuthService {
 
         auditLogService.recordEventIndependent("LOGIN_SUCCESS", user.getId(), normalizedUsername, ipAddress, "Staff login successful");
 
-        // 5. Generate RS256 access token
+        // 5. Generate refresh token family session
+        RefreshTokenService.RefreshTokenDetails refreshDetails = refreshTokenService.createInitialSession(user.getId());
+
+        // 6. Generate RS256 access token
         String accessToken = tokenService.createAccessToken(user);
-        return new LoginResponse(accessToken, "Bearer", TokenService.ACCESS_TOKEN_VALIDITY_SECONDS);
+        return new LoginResponse(
+                accessToken,
+                refreshDetails.rawRefreshToken(),
+                "Bearer",
+                TokenService.ACCESS_TOKEN_VALIDITY_SECONDS,
+                refreshDetails.refreshExpiresIn()
+        );
+    }
+
+    public RefreshResponse refresh(RefreshRequest request, String ipAddress) {
+        if (request == null || request.getRefreshToken() == null || request.getRefreshToken().isBlank()) {
+            auditLogService.recordEventIndependent("REFRESH_FAILURE", null, "unknown", ipAddress, "Refresh failed: missing refresh token");
+            throw new InvalidRefreshTokenException("Invalid refresh token");
+        }
+
+        return refreshTokenService.rotateRefreshToken(request.getRefreshToken(), ipAddress);
+    }
+
+    public void logout(LogoutRequest request, String ipAddress) {
+        if (request != null && request.getRefreshToken() != null && !request.getRefreshToken().isBlank()) {
+            refreshTokenService.logout(request.getRefreshToken(), ipAddress);
+        }
     }
 }
+

@@ -2,7 +2,7 @@ package com.hotelos.identity.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
-public class LoginResponse {
+public class RefreshResponse {
 
     @Schema(description = "Signed RS256 access JWT", requiredMode = Schema.RequiredMode.REQUIRED)
     private String accessToken;
@@ -19,10 +19,10 @@ public class LoginResponse {
     @Schema(description = "Remaining refresh session validity in seconds", example = "28800", requiredMode = Schema.RequiredMode.REQUIRED)
     private long refreshExpiresIn;
 
-    public LoginResponse() {
+    public RefreshResponse() {
     }
 
-    public LoginResponse(String accessToken, String refreshToken, String tokenType, long expiresIn, long refreshExpiresIn) {
+    public RefreshResponse(String accessToken, String refreshToken, String tokenType, long expiresIn, long refreshExpiresIn) {
         this.accessToken = accessToken;
         this.refreshToken = refreshToken;
         this.tokenType = tokenType;
