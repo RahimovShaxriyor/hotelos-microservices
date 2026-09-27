@@ -23,6 +23,9 @@ services:
       DASHBOARD_SCHEMA: ${DASHBOARD_SCHEMA:-dashboard_read}
       DASHBOARD_DB_USER: ${DASHBOARD_DB_USER:-dashboard_user}
       DASHBOARD_DB_PASSWORD: ${DASHBOARD_DB_PASSWORD:-dashboard_dev_pass}
+      IDENTITY_SCHEMA: ${IDENTITY_SCHEMA:-identity}
+      IDENTITY_DB_USER: ${IDENTITY_DB_USER:-identity_user}
+      IDENTITY_DB_PASSWORD: ${IDENTITY_DB_PASSWORD:-identity_dev_pass}
     volumes:
       - hotelos-postgres-data:/var/lib/postgresql/data
       - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
@@ -133,6 +136,27 @@ services:
       SPRING_RABBITMQ_HOST: rabbitmq
       DASHBOARD_TOKEN: hotelos-demo-token
 
+  identity-service:
+    build:
+      context: .
+      dockerfile: ./identity-service/Dockerfile
+    container_name: hotelos-identity
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8086:8086"
+    volumes:
+      - ./secrets:/secrets:ro
+    environment:
+      IDENTITY_DB_URL: jdbc:postgresql://postgres:5432/hotelos?currentSchema=identity
+      IDENTITY_DB_USER: ${IDENTITY_DB_USER:-identity_user}
+      IDENTITY_DB_PASSWORD: ${IDENTITY_DB_PASSWORD:-identity_dev_pass}
+      HOTELOS_BOOTSTRAP_ADMIN_USERNAME: ${HOTELOS_BOOTSTRAP_ADMIN_USERNAME:-}
+      HOTELOS_BOOTSTRAP_ADMIN_PASSWORD: ${HOTELOS_BOOTSTRAP_ADMIN_PASSWORD:-}
+      HOTELOS_JWT_PRIVATE_KEY_PATH: /secrets/jwt-private.pem
+      HOTELOS_JWT_PUBLIC_KEY_PATH: /secrets/jwt-public.pem
+
   gateway-service:
     build:
       context: .
@@ -143,6 +167,7 @@ services:
       - housekeeping-service
       - room-service
       - maintenance-service
+      - identity-service
     ports:
       - "8090:8090"
     environment:
@@ -151,6 +176,7 @@ services:
       ROOM_SERVICE_URL: http://room-service:8083
       MAINTENANCE_SERVICE_URL: http://maintenance-service:8084
       DASHBOARD_SERVICE_URL: http://dashboard-service:8085
+      IDENTITY_SERVICE_URL: http://identity-service:8086
       HOTELOS_AUTH_TOKEN: hotelos-demo-token
 
 volumes:

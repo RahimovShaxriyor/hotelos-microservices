@@ -1,0 +1,47 @@
+server:
+  port: 8086
+
+spring:
+  application:
+    name: identity-service
+
+  datasource:
+    url: ${IDENTITY_DB_URL:jdbc:postgresql://localhost:5434/hotelos?currentSchema=identity}
+    username: ${IDENTITY_DB_USER:identity_user}
+    password: ${IDENTITY_DB_PASSWORD:identity_dev_pass}
+    driver-class-name: org.postgresql.Driver
+
+  flyway:
+    enabled: true
+    schemas: identity
+    default-schema: identity
+    create-schemas: false
+    locations: classpath:db/migration
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+        default_schema: identity
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+
+hotelos:
+  jwt:
+    private-key-path: ${HOTELOS_JWT_PRIVATE_KEY_PATH:secrets/jwt-private.pem}
+    public-key-path: ${HOTELOS_JWT_PUBLIC_KEY_PATH:secrets/jwt-public.pem}
+    kid: ${HOTELOS_JWT_KID:hotelos-rsa-key-1}
+  bootstrap:
+    admin:
+      username: ${HOTELOS_BOOTSTRAP_ADMIN_USERNAME:}
+      password: ${HOTELOS_BOOTSTRAP_ADMIN_PASSWORD:}

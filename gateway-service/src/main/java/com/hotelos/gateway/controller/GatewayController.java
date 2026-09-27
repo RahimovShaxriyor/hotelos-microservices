@@ -26,7 +26,6 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 @RestController
-@Tag(name = "HotelOS Gateway", description = "Unified gateway endpoints for all HotelOS microservices")
 public class GatewayController {
     private final RestClient receptionClient;
     private final RestClient housekeepingClient;
@@ -60,13 +59,13 @@ public class GatewayController {
     // -------------------------------------------------------------------------
     // Gateway
     // -------------------------------------------------------------------------
-    @Operation(summary = "Gateway health check")
+    @Operation(summary = "Gateway health check", tags = {"Gateway"})
     @GetMapping("/api/gateway/health")
     public GatewayHealthResponse health() {
         return new GatewayHealthResponse("UP", "gateway-service", "/swagger-ui.html");
     }
 
-    @Operation(summary = "Gateway information")
+    @Operation(summary = "Gateway information", tags = {"Gateway"})
     @GetMapping("/api/gateway/info")
     public Map<String, Object> info() {
         Map<String, Object> body = new LinkedHashMap<>();
@@ -79,7 +78,7 @@ public class GatewayController {
         return body;
     }
 
-    @Operation(summary = "List gateway routes and downstream services")
+    @Operation(summary = "List gateway routes", tags = {"Gateway"})
     @GetMapping("/api/gateway/routes")
     public Map<String, Object> routes() {
         Map<String, Object> body = new LinkedHashMap<>();
@@ -97,7 +96,7 @@ public class GatewayController {
     // -------------------------------------------------------------------------
     // Auth
     // -------------------------------------------------------------------------
-    @Operation(summary = "Demo login", description = "Use username admin and password admin123. Returns the dashboard/API demo token.")
+    @Operation(summary = "Demo login", description = "Temporary demo login returning demo token", tags = {"Authentication"})
     @PostMapping(value = "/api/auth/login", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<JsonNode> login(@RequestBody LoginRequest request) {
         if (request == null || !"admin".equals(request.getUsername()) || !"admin123".equals(request.getPassword())) {
@@ -113,7 +112,7 @@ public class GatewayController {
         return ResponseEntity.ok(body);
     }
 
-    @Operation(summary = "Validate demo token")
+    @Operation(summary = "Validate demo token", tags = {"Authentication"})
     @GetMapping("/api/auth/validate")
     public ResponseEntity<JsonNode> validateToken(@RequestParam(required = false) String token) {
         ObjectNode body = objectMapper.createObjectNode();
@@ -126,19 +125,19 @@ public class GatewayController {
     // -------------------------------------------------------------------------
     // Reception
     // -------------------------------------------------------------------------
-    @Operation(summary = "Get all rooms")
+    @Operation(summary = "Get all rooms", tags = {"Reception"})
     @GetMapping("/api/reception/rooms")
     public ResponseEntity<JsonNode> getRooms() {
         return get(receptionClient, "/api/reception/rooms");
     }
 
-    @Operation(summary = "Get room by room number")
+    @Operation(summary = "Get room by room number", tags = {"Reception"})
     @GetMapping("/api/reception/rooms/{roomNumber}")
     public ResponseEntity<JsonNode> getRoom(@PathVariable String roomNumber) {
         return get(receptionClient, "/api/reception/rooms/" + roomNumber);
     }
 
-    @Operation(summary = "Get available rooms", description = "Optional query params: roomType and floor.")
+    @Operation(summary = "Get available rooms", description = "Optional query params: roomType and floor.", tags = {"Reception"})
     @GetMapping("/api/reception/rooms/available")
     public ResponseEntity<JsonNode> getAvailableRooms(@RequestParam(required = false) String roomType,
                                                       @RequestParam(required = false) Integer floor) {
@@ -156,37 +155,37 @@ public class GatewayController {
         return get(receptionClient, uri.toString());
     }
 
-    @Operation(summary = "Check in guest")
+    @Operation(summary = "Check in guest", tags = {"Reception"})
     @PostMapping(value = "/api/reception/check-in", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<JsonNode> checkIn(@RequestBody CheckInRequest request) {
         return post(receptionClient, "/api/reception/check-in", request);
     }
 
-    @Operation(summary = "Check out guest")
+    @Operation(summary = "Check out guest", tags = {"Reception"})
     @PostMapping("/api/reception/check-out/{roomNumber}")
     public ResponseEntity<JsonNode> checkOut(@PathVariable String roomNumber) {
         return post(receptionClient, "/api/reception/check-out/" + roomNumber, null);
     }
 
-    @Operation(summary = "Get active guests")
+    @Operation(summary = "Get active guests", tags = {"Reception"})
     @GetMapping("/api/reception/guests")
     public ResponseEntity<JsonNode> getGuests() {
         return get(receptionClient, "/api/reception/guests");
     }
 
-    @Operation(summary = "Get guest by room")
+    @Operation(summary = "Get guest by room", tags = {"Reception"})
     @GetMapping("/api/reception/guests/by-room/{roomNumber}")
     public ResponseEntity<JsonNode> getGuestByRoom(@PathVariable String roomNumber) {
         return get(receptionClient, "/api/reception/guests/by-room/" + roomNumber);
     }
 
-    @Operation(summary = "Archive a guest stay")
+    @Operation(summary = "Archive a guest stay", tags = {"Reception"})
     @PatchMapping("/api/reception/guests/{guestId}/archive")
     public ResponseEntity<JsonNode> archiveGuest(@PathVariable String guestId) {
         return patch(receptionClient, "/api/reception/guests/" + guestId + "/archive", null);
     }
 
-    @Operation(summary = "Calculate bill for room")
+    @Operation(summary = "Calculate bill for room", tags = {"Reception"})
     @PostMapping("/api/reception/bills/{roomNumber}/calculate")
     public ResponseEntity<JsonNode> calculateBill(@PathVariable String roomNumber) {
         return post(receptionClient, "/api/reception/bills/" + roomNumber + "/calculate", null);
@@ -195,70 +194,71 @@ public class GatewayController {
     // -------------------------------------------------------------------------
     // Housekeeping
     // -------------------------------------------------------------------------
-    @Operation(summary = "Get housekeeping queue")
+    @Operation(summary = "Get housekeeping queue", tags = {"Housekeeping"})
     @GetMapping("/api/housekeeping/queue")
     public ResponseEntity<JsonNode> getHousekeepingQueue() {
         return get(housekeepingClient, "/api/housekeeping/queue");
     }
 
-    @Operation(summary = "Start room cleaning")
+    @Operation(summary = "Start room cleaning", tags = {"Housekeeping"})
     @PostMapping("/api/housekeeping/rooms/{roomNumber}/start")
     public ResponseEntity<JsonNode> startCleaning(@PathVariable String roomNumber) {
         return post(housekeepingClient, "/api/housekeeping/rooms/" + roomNumber + "/start", null);
     }
 
-    @Operation(summary = "Mark room clean")
+    @Operation(summary = "Mark room clean", tags = {"Housekeeping"})
     @PostMapping("/api/housekeeping/rooms/{roomNumber}/clean")
     public ResponseEntity<JsonNode> markRoomClean(@PathVariable String roomNumber) {
         return post(housekeepingClient, "/api/housekeeping/rooms/" + roomNumber + "/clean", null);
     }
 
-    @Operation(summary = "Cancel housekeeping queue item")
+    @Operation(summary = "Cancel housekeeping queue item", tags = {"Housekeeping"})
     @PatchMapping("/api/housekeeping/queue/{roomNumber}/cancel")
     public ResponseEntity<JsonNode> cancelCleaning(@PathVariable String roomNumber) {
         return patch(housekeepingClient, "/api/housekeeping/queue/" + roomNumber + "/cancel", null);
     }
 
-    @Operation(summary = "Get cleaners")
+    @Operation(summary = "Get cleaners", tags = {"Housekeeping"})
     @GetMapping("/api/housekeeping/cleaners")
     public ResponseEntity<JsonNode> getCleaners() {
         return get(housekeepingClient, "/api/housekeeping/cleaners");
     }
 
     // -------------------------------------------------------------------------
+    // -------------------------------------------------------------------------
     // Room Service
     // -------------------------------------------------------------------------
-    @Operation(summary = "Get room service orders")
+    @Operation(summary = "Get room service orders", tags = {"Room Service"})
     @GetMapping("/api/room-service/orders")
     public ResponseEntity<JsonNode> getRoomServiceOrders() {
         return get(roomServiceClient, "/api/room-service/orders");
     }
 
-    @Operation(summary = "Get room service order by ID")
+    @Operation(summary = "Get room service order by ID", tags = {"Room Service"})
     @GetMapping("/api/room-service/orders/{orderId}")
     public ResponseEntity<JsonNode> getRoomServiceOrder(@PathVariable String orderId) {
         return get(roomServiceClient, "/api/room-service/orders/" + orderId);
     }
 
-    @Operation(summary = "Create room service order")
+    @Operation(summary = "Create room service order", tags = {"Room Service"})
     @PostMapping(value = "/api/room-service/orders", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<JsonNode> createRoomServiceOrder(@RequestBody CreateOrderRequest request) {
         return post(roomServiceClient, "/api/room-service/orders", request);
     }
 
-    @Operation(summary = "Move room service order to next status")
+    @Operation(summary = "Move room service order to next status", tags = {"Room Service"})
     @PatchMapping("/api/room-service/orders/{orderId}/next")
     public ResponseEntity<JsonNode> nextOrderStatus(@PathVariable String orderId) {
         return patch(roomServiceClient, "/api/room-service/orders/" + orderId + "/next", null);
     }
 
-    @Operation(summary = "Cancel room service order")
+    @Operation(summary = "Cancel room service order", tags = {"Room Service"})
     @PatchMapping("/api/room-service/orders/{orderId}/cancel")
     public ResponseEntity<JsonNode> cancelOrder(@PathVariable String orderId) {
         return patch(roomServiceClient, "/api/room-service/orders/" + orderId + "/cancel", null);
     }
 
-    @Operation(summary = "Get room service charges by room")
+    @Operation(summary = "Get room service charges by room", tags = {"Room Service"})
     @GetMapping("/api/room-service/charges/{roomNumber}")
     public ResponseEntity<JsonNode> getCharges(@PathVariable String roomNumber) {
         return get(roomServiceClient, "/api/room-service/charges/" + roomNumber);
@@ -267,49 +267,49 @@ public class GatewayController {
     // -------------------------------------------------------------------------
     // Maintenance
     // -------------------------------------------------------------------------
-    @Operation(summary = "Get maintenance issues")
+    @Operation(summary = "Get maintenance issues", tags = {"Maintenance"})
     @GetMapping("/api/maintenance/issues")
     public ResponseEntity<JsonNode> getMaintenanceIssues() {
         return get(maintenanceClient, "/api/maintenance/issues");
     }
 
-    @Operation(summary = "Get maintenance issue by ID")
+    @Operation(summary = "Get maintenance issue by ID", tags = {"Maintenance"})
     @GetMapping("/api/maintenance/issues/{issueId}")
     public ResponseEntity<JsonNode> getMaintenanceIssue(@PathVariable String issueId) {
         return get(maintenanceClient, "/api/maintenance/issues/" + issueId);
     }
 
-    @Operation(summary = "Report maintenance issue")
+    @Operation(summary = "Report maintenance issue", tags = {"Maintenance"})
     @PostMapping(value = "/api/maintenance/issues", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<JsonNode> reportMaintenanceIssue(@RequestBody CreateIssueRequest request) {
         return post(maintenanceClient, "/api/maintenance/issues", request);
     }
 
-    @Operation(summary = "Get maintenance priority queue")
+    @Operation(summary = "Get maintenance priority queue", tags = {"Maintenance"})
     @GetMapping("/api/maintenance/queue")
     public ResponseEntity<JsonNode> getMaintenanceQueue() {
         return get(maintenanceClient, "/api/maintenance/queue");
     }
 
-    @Operation(summary = "Process next maintenance queue item")
+    @Operation(summary = "Process next maintenance queue item", tags = {"Maintenance"})
     @PostMapping("/api/maintenance/queue/process-next")
     public ResponseEntity<JsonNode> processNextMaintenance() {
         return post(maintenanceClient, "/api/maintenance/queue/process-next", null);
     }
 
-    @Operation(summary = "Resolve maintenance issue")
+    @Operation(summary = "Resolve maintenance issue", tags = {"Maintenance"})
     @PatchMapping("/api/maintenance/issues/{issueId}/resolve")
     public ResponseEntity<JsonNode> resolveMaintenanceIssue(@PathVariable String issueId) {
         return patch(maintenanceClient, "/api/maintenance/issues/" + issueId + "/resolve", null);
     }
 
-    @Operation(summary = "Cancel maintenance issue")
+    @Operation(summary = "Cancel maintenance issue", tags = {"Maintenance"})
     @PatchMapping("/api/maintenance/issues/{issueId}/cancel")
     public ResponseEntity<JsonNode> cancelMaintenanceIssue(@PathVariable String issueId) {
         return patch(maintenanceClient, "/api/maintenance/issues/" + issueId + "/cancel", null);
     }
 
-    @Operation(summary = "Get technicians")
+    @Operation(summary = "Get technicians", tags = {"Maintenance"})
     @GetMapping("/api/maintenance/technicians")
     public ResponseEntity<JsonNode> getTechnicians() {
         return get(maintenanceClient, "/api/maintenance/technicians");
@@ -318,7 +318,7 @@ public class GatewayController {
     // -------------------------------------------------------------------------
     // Dashboard
     // -------------------------------------------------------------------------
-    @Operation(summary = "Aggregate full operational snapshot")
+    @Operation(summary = "Aggregate full operational snapshot", tags = {"Dashboard"})
     @GetMapping("/api/dashboard/snapshot")
     public ResponseEntity<JsonNode> dashboardSnapshot() {
         ObjectNode body = objectMapper.createObjectNode();
@@ -331,13 +331,13 @@ public class GatewayController {
         return ResponseEntity.ok(body);
     }
 
-    @Operation(summary = "Get dashboard event history")
+    @Operation(summary = "Get dashboard event history", tags = {"Dashboard"})
     @GetMapping("/api/dashboard/events")
     public ResponseEntity<JsonNode> getDashboardEvents() {
         return get(dashboardClient, "/api/dashboard/events");
     }
 
-    @Operation(summary = "Clear dashboard event history")
+    @Operation(summary = "Clear dashboard event history", tags = {"Dashboard"})
     @DeleteMapping("/api/dashboard/events")
     public ResponseEntity<JsonNode> clearDashboardEvents() {
         return delete(dashboardClient, "/api/dashboard/events");
@@ -346,7 +346,7 @@ public class GatewayController {
     // -------------------------------------------------------------------------
     // Demo endpoints
     // -------------------------------------------------------------------------
-    @Operation(summary = "Reset all demo service state")
+    @Operation(summary = "Development reset", tags = {"Gateway"})
     @PostMapping("/api/demo/reset")
     public ResponseEntity<JsonNode> demoReset() {
         ObjectNode body = objectMapper.createObjectNode();
@@ -358,7 +358,7 @@ public class GatewayController {
         return ResponseEntity.ok(body);
     }
 
-    @Operation(summary = "Seed demo data")
+    @Operation(summary = "Development seed", tags = {"Gateway"})
     @PostMapping("/api/demo/seed")
     public ResponseEntity<JsonNode> demoSeed() {
         ObjectNode body = objectMapper.createObjectNode();
@@ -370,19 +370,19 @@ public class GatewayController {
         return ResponseEntity.ok(body);
     }
 
-    @Operation(summary = "Run TS-01: double room check-in with 3rd floor preference")
+    @Operation(summary = "Run TS-01 scenario", tags = {"Gateway"})
     @PostMapping("/api/demo/run/ts-01")
     public ResponseEntity<JsonNode> runTs01() {
         return post(receptionClient, "/api/reception/check-in", checkInRequest("Diana Otayeva", "DOUBLE", 2, 3, "LIFT"));
     }
 
-    @Operation(summary = "Run TS-02: check out room 204")
+    @Operation(summary = "Run TS-02 scenario", tags = {"Gateway"})
     @PostMapping("/api/demo/run/ts-02")
     public ResponseEntity<JsonNode> runTs02() {
         return post(receptionClient, "/api/reception/check-out/204", null);
     }
 
-    @Operation(summary = "Run TS-03: clean room 204 after check-out")
+    @Operation(summary = "Run TS-03 scenario", tags = {"Gateway"})
     @PostMapping("/api/demo/run/ts-03")
     public ResponseEntity<JsonNode> runTs03() {
         ObjectNode body = objectMapper.createObjectNode();
@@ -393,7 +393,7 @@ public class GatewayController {
         return ResponseEntity.ok(body);
     }
 
-    @Operation(summary = "Run TS-04: room 301 orders coffee and sandwich")
+    @Operation(summary = "Run TS-04 scenario", tags = {"Gateway"})
     @PostMapping("/api/demo/run/ts-04")
     public ResponseEntity<JsonNode> runTs04() {
         ObjectNode request = objectMapper.createObjectNode();
@@ -412,14 +412,14 @@ public class GatewayController {
         return ResponseEntity.ok(body);
     }
 
-    @Operation(summary = "Run TS-05: report critical broken shower in room 115")
+    @Operation(summary = "Run TS-05 scenario", tags = {"Gateway"})
     @PostMapping("/api/demo/run/ts-05")
     public ResponseEntity<JsonNode> runTs05() {
         CreateIssueRequest request = new CreateIssueRequest("115", "Broken shower", "CRITICAL");
         return post(maintenanceClient, "/api/maintenance/issues", request);
     }
 
-    @Operation(summary = "Run TS-06: concurrent check-in requests")
+    @Operation(summary = "Run TS-06 scenario", tags = {"Gateway"})
     @PostMapping("/api/demo/run/ts-06")
     public ResponseEntity<JsonNode> runTs06() {
         safePostBody(receptionClient, "/api/reception/dev/reset", null);
@@ -435,7 +435,7 @@ public class GatewayController {
         return ResponseEntity.ok(body);
     }
 
-    @Operation(summary = "Run TS-07: no rooms available for requested type")
+    @Operation(summary = "Run TS-07 scenario", tags = {"Gateway"})
     @PostMapping("/api/demo/run/ts-07")
     public ResponseEntity<JsonNode> runTs07() {
         safePostBody(receptionClient, "/api/reception/dev/reset", null);
@@ -445,7 +445,7 @@ public class GatewayController {
         return ResponseEntity.ok(body);
     }
 
-    @Operation(summary = "Run TS-08: invalid room number validation")
+    @Operation(summary = "Run TS-08 scenario", tags = {"Gateway"})
     @PostMapping("/api/demo/run/ts-08")
     public ResponseEntity<JsonNode> runTs08() {
         ObjectNode body = objectMapper.createObjectNode();

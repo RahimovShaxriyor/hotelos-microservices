@@ -12,6 +12,7 @@ set -e
 #     * housekeeping    (owner: housekeeping_user)
 #     * maintenance     (owner: maintenance_user)
 #     * dashboard_read  (owner: dashboard_user)
+#     * identity        (owner: identity_user)
 #
 # Security & Isolation:
 # - Strict identifier validation: ^[a-zA-Z0-9_]+$
@@ -114,5 +115,10 @@ provision_bounded_context \
     "${DASHBOARD_SCHEMA:-dashboard_read}" \
     "${DASHBOARD_DB_USER:-dashboard_user}" \
     "${DASHBOARD_DB_PASSWORD:-dashboard_dev_pass}"
+
+provision_bounded_context \
+    "${IDENTITY_SCHEMA:-identity}" \
+    "${IDENTITY_DB_USER:-identity_user}" \
+    "${IDENTITY_DB_PASSWORD:-identity_dev_pass}"
 
 echo "All HotelOS bounded context schemas provisioned and isolated successfully in database '${DB_TARGET}'."

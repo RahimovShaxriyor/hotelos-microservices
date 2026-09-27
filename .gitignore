@@ -18,3 +18,8 @@ logs/
 pgdata/
 *.dump
 *.sql.dump
+
+# Secrets & Keys
+secrets/
+*.pem
+*.key

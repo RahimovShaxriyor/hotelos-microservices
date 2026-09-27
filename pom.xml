@@ -14,6 +14,7 @@
         <module>maintenance-service</module>
         <module>dashboard-service</module>
         <module>gateway-service</module>
+        <module>identity-service</module>
     </modules>
 
     <properties>
