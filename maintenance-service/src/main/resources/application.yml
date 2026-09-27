@@ -3,8 +3,34 @@ server:
 spring:
   application:
     name: maintenance-service
+  datasource:
+    url: ${MAINTENANCE_DB_URL:jdbc:postgresql://localhost:5434/hotelos?currentSchema=maintenance}
+    username: ${MAINTENANCE_DB_USER:maintenance_user}
+    password: ${MAINTENANCE_DB_PASSWORD:maintenance_dev_pass}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        default_schema: maintenance
+  flyway:
+    enabled: true
+    schemas: maintenance
+    default-schema: maintenance
+    create-schemas: false
   rabbitmq:
     host: ${SPRING_RABBITMQ_HOST:localhost}
     port: 5672
     username: guest
     password: guest
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
+hotelos:
+  outbox:
+    poll-interval-ms: 500
+    batch-size: 10
+    confirm-timeout-ms: 3000
