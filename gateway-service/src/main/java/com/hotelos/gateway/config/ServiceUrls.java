@@ -8,6 +8,7 @@ public record ServiceUrls(
         String housekeepingUrl,
         String roomServiceUrl,
         String maintenanceUrl,
-        String dashboardUrl
+        String dashboardUrl,
+        String identityUrl
 ) {
 }

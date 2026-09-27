@@ -10,10 +10,11 @@ import com.hotelos.gateway.dto.CreateIssueRequest;
 import com.hotelos.gateway.dto.CreateOrderRequest;
 import com.hotelos.gateway.dto.GatewayHealthResponse;
 import com.hotelos.gateway.dto.LoginRequest;
+import com.hotelos.gateway.dto.LogoutRequest;
+import com.hotelos.gateway.dto.RefreshRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -27,6 +28,7 @@ import java.util.concurrent.CompletableFuture;
 
 @RestController
 public class GatewayController {
+    private final RestClient identityClient;
     private final RestClient receptionClient;
     private final RestClient housekeepingClient;
     private final RestClient roomServiceClient;
@@ -34,18 +36,18 @@ public class GatewayController {
     private final RestClient dashboardClient;
     private final ServiceUrls serviceUrls;
     private final ObjectMapper objectMapper;
-    private final String authToken;
 
     public GatewayController(
+            @Qualifier("identityClient") RestClient identityClient,
             @Qualifier("receptionClient") RestClient receptionClient,
             @Qualifier("housekeepingClient") RestClient housekeepingClient,
             @Qualifier("roomServiceClient") RestClient roomServiceClient,
             @Qualifier("maintenanceClient") RestClient maintenanceClient,
             @Qualifier("dashboardClient") RestClient dashboardClient,
             ServiceUrls serviceUrls,
-            ObjectMapper objectMapper,
-            @Value("${hotelos.auth-token}") String authToken
+            ObjectMapper objectMapper
     ) {
+        this.identityClient = identityClient;
         this.receptionClient = receptionClient;
         this.housekeepingClient = housekeepingClient;
         this.roomServiceClient = roomServiceClient;
@@ -53,19 +55,18 @@ public class GatewayController {
         this.dashboardClient = dashboardClient;
         this.serviceUrls = serviceUrls;
         this.objectMapper = objectMapper;
-        this.authToken = authToken;
     }
 
     // -------------------------------------------------------------------------
     // Gateway
     // -------------------------------------------------------------------------
-    @Operation(summary = "Gateway health check", tags = {"Gateway"})
+    @Operation(summary = "Gateway health check", tags = {"Gateway"}, security = {})
     @GetMapping("/api/gateway/health")
     public GatewayHealthResponse health() {
         return new GatewayHealthResponse("UP", "gateway-service", "/swagger-ui.html");
     }
 
-    @Operation(summary = "Gateway information", tags = {"Gateway"})
+    @Operation(summary = "Gateway information", tags = {"Gateway"}, security = {})
     @GetMapping("/api/gateway/info")
     public Map<String, Object> info() {
         Map<String, Object> body = new LinkedHashMap<>();
@@ -74,7 +75,6 @@ public class GatewayController {
         body.put("version", "2.0.0");
         body.put("swagger", "/swagger-ui.html");
         body.put("dashboard", "http://localhost:8085");
-        body.put("token", authToken);
         return body;
     }
 
@@ -89,37 +89,34 @@ public class GatewayController {
         body.put("roomService", serviceUrls.roomServiceUrl() + "/api/room-service/**");
         body.put("maintenance", serviceUrls.maintenanceUrl() + "/api/maintenance/**");
         body.put("dashboard", serviceUrls.dashboardUrl() + "/api/dashboard/**");
-        body.put("webSocket", "ws://localhost:8085/ws/dashboard?token=" + authToken);
         return body;
     }
 
     // -------------------------------------------------------------------------
     // Auth
     // -------------------------------------------------------------------------
-    @Operation(summary = "Demo login", description = "Temporary demo login returning demo token", tags = {"Authentication"})
-    @PostMapping(value = "/api/auth/login", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(summary = "Staff login", description = "Authenticate staff credentials and issue access token with refresh token", tags = {"Authentication"}, security = {})
+    @PostMapping(value = "/api/auth/login", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<JsonNode> login(@RequestBody LoginRequest request) {
-        if (request == null || !"admin".equals(request.getUsername()) || !"admin123".equals(request.getPassword())) {
-            ObjectNode body = objectMapper.createObjectNode();
-            body.put("error", "Invalid credentials");
-            body.put("message", "Use username admin and password admin123 for the demo.");
-            return ResponseEntity.status(401).body(body);
-        }
-        ObjectNode body = objectMapper.createObjectNode();
-        body.put("token", authToken);
-        body.put("tokenType", "DemoToken");
-        body.put("dashboardWebSocket", "ws://localhost:8085/ws/dashboard?token=" + authToken);
-        return ResponseEntity.ok(body);
+        return post(identityClient, "/api/auth/login", request);
     }
 
-    @Operation(summary = "Validate demo token", tags = {"Authentication"})
-    @GetMapping("/api/auth/validate")
-    public ResponseEntity<JsonNode> validateToken(@RequestParam(required = false) String token) {
-        ObjectNode body = objectMapper.createObjectNode();
-        boolean valid = authToken.equals(token);
-        body.put("valid", valid);
-        body.put("message", valid ? "Token is valid" : "Token is missing or invalid");
-        return ResponseEntity.status(valid ? 200 : 401).body(body);
+    @Operation(summary = "Rotate refresh token and issue new access token", description = "Rotate refresh token and issue new access token", tags = {"Authentication"}, security = {})
+    @PostMapping(value = "/api/auth/refresh", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<JsonNode> refresh(@RequestBody RefreshRequest request) {
+        return post(identityClient, "/api/auth/refresh", request);
+    }
+
+    @Operation(summary = "Revoke current login session", description = "Revoke current login session", tags = {"Authentication"}, security = {})
+    @PostMapping(value = "/api/auth/logout", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<Void> logout(@RequestBody LogoutRequest request) {
+        identityClient.post()
+                .uri("/api/auth/logout")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(request)
+                .retrieve()
+                .toBodilessEntity();
+        return ResponseEntity.noContent().build();
     }
 
     // -------------------------------------------------------------------------
@@ -373,7 +370,7 @@ public class GatewayController {
     @Operation(summary = "Run TS-01 scenario", tags = {"Gateway"})
     @PostMapping("/api/demo/run/ts-01")
     public ResponseEntity<JsonNode> runTs01() {
-        return post(receptionClient, "/api/reception/check-in", checkInRequest("Diana Otayeva", "DOUBLE", 2, 3, "LIFT"));
+        return post(receptionClient, "/api/reception/check-in", checkInRequest("Alice Smith", "DOUBLE", 2, 3, "LIFT"));
     }
 
     @Operation(summary = "Run TS-02 scenario", tags = {"Gateway"})

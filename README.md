@@ -446,10 +446,11 @@ HotelOS/
 | Method | Endpoint | Description |
 |---|---|---|
 | `GET` | `/api/gateway/health` | Gateway health status and Swagger UI link |
-| `GET` | `/api/gateway/info` | System metadata, version, and default auth token |
-| `GET` | `/api/gateway/routes` | Listing of proxied route patterns and WebSocket URL |
-| `POST` | `/api/auth/login` | Demo authentication endpoint (returns demo token) |
-| `GET` | `/api/auth/validate` | Validates demo authentication token |
+| `GET` | `/api/gateway/info` | System metadata and Swagger UI link |
+| `GET` | `/api/gateway/routes` | Listing of proxied route patterns (ADMIN only) |
+| `POST` | `/api/auth/login` | Staff authentication endpoint (proxies to Identity, returns RS256 JWT & refresh token) |
+| `POST` | `/api/auth/refresh` | Rotates refresh token and issues new access JWT |
+| `POST` | `/api/auth/logout` | Revokes refresh session |
 | `GET` | `/api/reception/rooms` | Lists all hotel rooms with occupancy, housekeeping & engineering statuses |
 | `GET` | `/api/reception/rooms/{roomNumber}` | Retrieves room details by room number |
 | `GET` | `/api/reception/rooms/available` | Queries sellable rooms (optional filters: `roomType`, `floor`) |
@@ -502,7 +503,7 @@ HotelOS/
 **Request Body**:
 ```json
 {
-  "guestName": "Diana Otayeva",
+  "guestName": "Alice Smith",
   "roomType": "DOUBLE",
   "nights": 2,
   "preferredFloor": 3,
@@ -513,7 +514,7 @@ HotelOS/
 ```json
 {
   "stayId": "48b04775-38f7-4885-bd6f-00aa1ce76b39",
-  "guestName": "Diana Otayeva",
+  "guestName": "Alice Smith",
   "roomNumber": "301",
   "roomType": "DOUBLE",
   "occupancyStatus": "OCCUPIED",
@@ -771,7 +772,10 @@ erDiagram
    - **Lockout Policy**: Accounts lock for 15 minutes after 5 consecutive failed login attempts.
    - **Audit Trail**: Stored in PostgreSQL `identity.auth_audit_log`.
 2. **`gateway-service`**:
-   - Currently includes demo authentication (`admin`/`admin123`) returning `hotelos-demo-token`.
+   - Enforces the external security boundary via Spring Security Resource Server with RS256 JWT validation using public RSA key (`jwt-public.pem`).
+   - Strictly validates `alg=RS256`, `kid=hotelos-rsa-key-1`, `iss=hotelos-identity`, `aud=hotelos-api`, and token expiration (`exp > now`, max 60s clock skew).
+   - Maps JWT `roles` array to Spring Granted Authorities (`ROLE_*`) and enforces coarse-grained RBAC per service.
+   - Forwards original `Authorization: Bearer <token>` to downstream internal microservices while stripping client spoofing headers.
 3. **`dashboard-service`**:
    - Protects WebSocket connections via query parameter matching `?token=hotelos-demo-token`.
 
@@ -885,7 +889,7 @@ mvn spring-boot:run -pl gateway-service
 | `POSTGRES_DB` | No | Logical database name | `hotelos` |
 | `POSTGRES_PORT` | No | Host port mapped to PostgreSQL | `5434` |
 | `SPRING_RABBITMQ_HOST` | No | RabbitMQ broker hostname | `localhost` (host) / `rabbitmq` (docker) |
-| `HOTELOS_AUTH_TOKEN` | No | Default demo gateway token | `hotelos-demo-token` |
+| `HOTELOS_JWT_PUBLIC_KEY_PATH` | No | Path to RSA public key (PEM) for JWT verification | `secrets/jwt-public.pem` |
 | `DASHBOARD_TOKEN` | No | Token required for WebSocket handshake | `hotelos-demo-token` |
 | `RECEPTION_DB_USER` | No | Username for reception schema | `reception_user` |
 | `RECEPTION_DB_PASSWORD` | No | Password for reception user | `reception_dev_pass` |

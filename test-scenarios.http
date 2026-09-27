@@ -2,7 +2,7 @@
 POST http://localhost:8081/api/reception/check-in
 Content-Type: application/json
 
-{"guestName":"Diana Otayeva","roomType":"DOUBLE","nights":2,"preferredFloor":3,"proximityPreference":"LIFT"}
+{"guestName":"Alice Smith","roomType":"DOUBLE","nights":2,"preferredFloor":3,"proximityPreference":"LIFT"}
 
 ### TS-02 Check-out room 204
 POST http://localhost:8081/api/reception/check-out/204

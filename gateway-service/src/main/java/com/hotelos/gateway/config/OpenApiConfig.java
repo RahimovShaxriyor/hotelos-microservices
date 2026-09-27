@@ -29,11 +29,24 @@ public class OpenApiConfig {
                         new io.swagger.v3.oas.models.tags.Tag().name("Dashboard").description("Real-time dashboard and event monitoring"),
                         new io.swagger.v3.oas.models.tags.Tag().name("Gateway").description("Gateway health, routing, and development utilities")
                 ))
+                .addSecurityItem(new io.swagger.v3.oas.models.security.SecurityRequirement().addList("bearerAuth"))
                 .components(new Components()
                         .addSecuritySchemes("bearerAuth", new SecurityScheme()
                                 .name("bearerAuth")
                                 .type(SecurityScheme.Type.HTTP)
                                 .scheme("bearer")
                                 .bearerFormat("JWT")));
+    }
+
+    @Bean
+    public org.springdoc.core.customizers.OpenApiCustomizer openApiSecurityCustomizer() {
+        return openApi -> {
+            if (openApi.getPaths() == null) return;
+            openApi.getPaths().forEach((path, pathItem) -> {
+                if (path.startsWith("/api/auth/") || path.equals("/api/gateway/health") || path.equals("/api/gateway/info")) {
+                    pathItem.readOperations().forEach(operation -> operation.setSecurity(List.of()));
+                }
+            });
+        };
     }
 }

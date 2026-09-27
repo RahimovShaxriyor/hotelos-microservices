@@ -170,6 +170,8 @@ services:
       - identity-service
     ports:
       - "8090:8090"
+    volumes:
+      - ./secrets/jwt-public.pem:/secrets/jwt-public.pem:ro
     environment:
       RECEPTION_SERVICE_URL: http://reception-service:8081
       HOUSEKEEPING_SERVICE_URL: http://housekeeping-service:8082
@@ -177,7 +179,7 @@ services:
       MAINTENANCE_SERVICE_URL: http://maintenance-service:8084
       DASHBOARD_SERVICE_URL: http://dashboard-service:8085
       IDENTITY_SERVICE_URL: http://identity-service:8086
-      HOTELOS_AUTH_TOKEN: hotelos-demo-token
+      HOTELOS_JWT_PUBLIC_KEY_PATH: /secrets/jwt-public.pem
 
 volumes:
   hotelos-postgres-data:

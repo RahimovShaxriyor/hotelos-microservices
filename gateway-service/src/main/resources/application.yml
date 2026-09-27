@@ -14,10 +14,17 @@ springdoc:
     path: /v3/api-docs
 
 hotelos:
-  auth-token: ${HOTELOS_AUTH_TOKEN:hotelos-demo-token}
+  jwt:
+    public-key-path: ${HOTELOS_JWT_PUBLIC_KEY_PATH:secrets/jwt-public.pem}
+    kid: ${HOTELOS_JWT_KID:hotelos-rsa-key-1}
+    issuer: ${HOTELOS_JWT_ISSUER:hotelos-identity}
+    audience: ${HOTELOS_JWT_AUDIENCE:hotelos-api}
+  cors:
+    allowed-origins: ${HOTELOS_CORS_ALLOWED_ORIGINS:http://localhost:8085,http://localhost:3000,http://localhost:5173}
   services:
     reception-url: ${RECEPTION_SERVICE_URL:http://localhost:8081}
     housekeeping-url: ${HOUSEKEEPING_SERVICE_URL:http://localhost:8082}
     room-service-url: ${ROOM_SERVICE_URL:http://localhost:8083}
     maintenance-url: ${MAINTENANCE_SERVICE_URL:http://localhost:8084}
     dashboard-url: ${DASHBOARD_SERVICE_URL:http://localhost:8085}
+    identity-url: ${IDENTITY_SERVICE_URL:http://localhost:8086}

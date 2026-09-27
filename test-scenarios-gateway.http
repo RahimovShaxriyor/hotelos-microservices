@@ -12,17 +12,31 @@ GET http://localhost:8090/api/gateway/info
 ### Gateway routes
 GET http://localhost:8090/api/gateway/routes
 
-### Auth login
+### Auth login (Staff Authentication)
+# @name login
 POST http://localhost:8090/api/auth/login
 Content-Type: application/json
 
 {
-  "username": "admin",
-  "password": "admin123"
+  "username": "admin.staff",
+  "password": "SuperSecretPass123!"
 }
 
-### Auth validate
-GET http://localhost:8090/api/auth/validate?token=hotelos-demo-token
+### Auth refresh
+POST http://localhost:8090/api/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{login.response.body.refreshToken}}"
+}
+
+### Auth logout
+POST http://localhost:8090/api/auth/logout
+Content-Type: application/json
+
+{
+  "refreshToken": "{{login.response.body.refreshToken}}"
+}
 
 ### Demo reset
 POST http://localhost:8090/api/demo/reset
@@ -47,7 +61,7 @@ POST http://localhost:8090/api/reception/check-in
 Content-Type: application/json
 
 {
-  "guestName": "Diana Otayeva",
+  "guestName": "Alice Smith",
   "roomType": "DOUBLE",
   "nights": 2,
   "preferredFloor": 3,
