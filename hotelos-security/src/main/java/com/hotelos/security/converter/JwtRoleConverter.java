@@ -10,7 +10,6 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
-import java.util.Locale;
 import java.util.stream.Collectors;
 
 public class JwtRoleConverter implements Converter<Jwt, AbstractAuthenticationToken> {
@@ -35,7 +34,7 @@ public class JwtRoleConverter implements Converter<Jwt, AbstractAuthenticationTo
         }
         return roles.stream()
                 .filter(role -> role != null && !role.isBlank())
-                .map(role -> new SimpleGrantedAuthority(ROLE_PREFIX + role.trim().toUpperCase(Locale.ROOT)))
+                .map(role -> new SimpleGrantedAuthority(ROLE_PREFIX + role.trim()))
                 .collect(Collectors.toUnmodifiableList());
     }
 }

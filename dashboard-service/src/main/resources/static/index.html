@@ -10,8 +10,10 @@
         h1 { margin: 0; font-size: 26px; }
         main { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; padding: 24px; }
         section { background: #16213a; border: 1px solid #2c3c5f; border-radius: 14px; padding: 18px; min-height: 220px; }
-        input, button { padding: 10px; border-radius: 8px; border: none; }
+        input, button { padding: 10px; border-radius: 8px; border: none; font-size: 14px; }
+        input { background: #1e293b; color: #f8fafc; border: 1px solid #334155; }
         button { cursor: pointer; background: #60a5fa; color: #051525; font-weight: bold; }
+        button:disabled { opacity: 0.6; cursor: not-allowed; }
         .event { background: #0f172a; border-left: 4px solid #60a5fa; padding: 12px; margin: 10px 0; border-radius: 8px; word-break: break-word; }
         .small { color: #9ca3af; font-size: 13px; }
         .full { grid-column: 1 / -1; }
@@ -20,10 +22,16 @@
 <body>
 <header>
     <h1>HotelOS Live Operations Dashboard</h1>
-    <p class="small">Connect with token <b>hotelos-demo-token</b>. Events are delivered over WebSocket without page refresh.</p>
-    <input id="token" value="hotelos-demo-token" />
-    <button onclick="connect()">Connect</button>
-    <span id="status" class="small">Not connected</span>
+    <p class="small">Secure WebSocket connection via short-lived RS256 one-time ticket.</p>
+    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 10px;">
+        <input id="gatewayUrl" placeholder="Gateway URL" value="http://localhost:8090" style="width: 180px;" />
+        <input id="username" placeholder="Username" value="admin" style="width: 120px;" />
+        <input id="password" type="password" placeholder="Password" style="width: 140px;" />
+        <span class="small" style="margin: 0 4px;">or Access JWT:</span>
+        <input id="accessJwt" type="password" placeholder="Bearer JWT (optional)" style="width: 200px;" />
+        <button id="connectBtn" onclick="connect()">Authenticate & Connect</button>
+        <span id="status" class="small" style="font-weight: bold;">Not connected</span>
+    </div>
 </header>
 <main>
     <section>
@@ -49,20 +57,96 @@
 </main>
 <script>
     let socket;
-    function connect() {
-        const token = document.getElementById('token').value;
-        socket = new WebSocket(`ws://${location.host}/ws/dashboard?token=${encodeURIComponent(token)}`);
-        socket.onopen = () => document.getElementById('status').textContent = 'Connected';
-        socket.onclose = () => document.getElementById('status').textContent = 'Closed';
-        socket.onerror = () => document.getElementById('status').textContent = 'Error';
-        socket.onmessage = event => handleEvent(event.data);
+
+    async function connect() {
+        const statusEl = document.getElementById('status');
+        const connectBtn = document.getElementById('connectBtn');
+        const gatewayUrl = (document.getElementById('gatewayUrl').value || 'http://localhost:8090').replace(/\/+$/, '');
+        const username = document.getElementById('username').value.trim();
+        const password = document.getElementById('password').value;
+        let accessJwt = document.getElementById('accessJwt').value.trim();
+
+        try {
+            connectBtn.disabled = true;
+            statusEl.textContent = 'Authenticating...';
+
+            if (!accessJwt) {
+                if (!username || !password) {
+                    statusEl.textContent = 'Error: Enter credentials or Access JWT';
+                    connectBtn.disabled = false;
+                    return;
+                }
+                const loginResp = await fetch(`${gatewayUrl}/api/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                if (!loginResp.ok) {
+                    statusEl.textContent = `Login failed (${loginResp.status})`;
+                    connectBtn.disabled = false;
+                    return;
+                }
+                const loginData = await loginResp.json();
+                accessJwt = loginData.accessToken;
+            }
+
+            statusEl.textContent = 'Requesting WS Ticket...';
+            const ticketResp = await fetch(`${gatewayUrl}/api/ws/tickets/dashboard`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${accessJwt}`
+                }
+            });
+
+            if (!ticketResp.ok) {
+                statusEl.textContent = `Ticket issue failed (${ticketResp.status})`;
+                connectBtn.disabled = false;
+                return;
+            }
+
+            const ticketData = await ticketResp.json();
+            const ticket = ticketData.ticket;
+            ticketData.ticket = null;
+
+            statusEl.textContent = 'Connecting WebSocket...';
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.close();
+            }
+
+            const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsHost = window.location.host;
+            socket = new WebSocket(`${wsProto}//${wsHost}/ws/dashboard?ticket=${encodeURIComponent(ticket)}`);
+
+            socket.onopen = () => {
+                statusEl.textContent = 'Connected (Authorized)';
+                statusEl.style.color = '#34d399';
+                connectBtn.disabled = false;
+            };
+            socket.onclose = () => {
+                statusEl.textContent = 'Closed';
+                statusEl.style.color = '#f87171';
+                connectBtn.disabled = false;
+            };
+            socket.onerror = () => {
+                statusEl.textContent = 'Connection Error / Denied';
+                statusEl.style.color = '#f87171';
+                connectBtn.disabled = false;
+            };
+            socket.onmessage = event => handleEvent(event.data);
+        } catch (err) {
+            statusEl.textContent = 'Error: ' + err.message;
+            statusEl.style.color = '#f87171';
+            connectBtn.disabled = false;
+        }
     }
+
     function add(target, text) {
         const box = document.createElement('div');
         box.className = 'event';
         box.textContent = text;
         document.getElementById(target).prepend(box);
     }
+
     function handleEvent(raw) {
         add('feed', raw);
         try {

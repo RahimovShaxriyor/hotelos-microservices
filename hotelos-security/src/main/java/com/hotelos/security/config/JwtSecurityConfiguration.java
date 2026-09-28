@@ -5,6 +5,7 @@ import com.hotelos.security.converter.JwtRoleConverter;
 import com.hotelos.security.validator.AudienceValidator;
 import com.hotelos.security.validator.IssuerValidator;
 import com.hotelos.security.validator.KidValidator;
+import com.hotelos.security.web.RestAccessDeniedHandler;
 import com.hotelos.security.web.RestAuthenticationEntryPoint;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -44,6 +45,12 @@ public class JwtSecurityConfiguration {
     @ConditionalOnMissingBean
     public RestAuthenticationEntryPoint restAuthenticationEntryPoint(ObjectMapper objectMapper) {
         return new RestAuthenticationEntryPoint(objectMapper);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public RestAccessDeniedHandler restAccessDeniedHandler(ObjectMapper objectMapper) {
+        return new RestAccessDeniedHandler(objectMapper);
     }
 
     @Bean

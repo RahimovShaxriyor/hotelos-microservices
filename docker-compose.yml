@@ -142,14 +142,19 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
     ports:
       - "8085:8085"
     volumes:
       - ./secrets/jwt-public.pem:/secrets/jwt-public.pem:ro
     environment:
       SPRING_RABBITMQ_HOST: rabbitmq
-      DASHBOARD_TOKEN: hotelos-demo-token
+      DASHBOARD_DB_URL: jdbc:postgresql://postgres:5432/hotelos?currentSchema=dashboard_read
+      DASHBOARD_DB_USER: ${DASHBOARD_DB_USER:-dashboard_user}
+      DASHBOARD_DB_PASSWORD: ${DASHBOARD_DB_PASSWORD:-dashboard_dev_pass}
       HOTELOS_JWT_PUBLIC_KEY_PATH: /secrets/jwt-public.pem
+      HOTELOS_WS_ALLOWED_ORIGINS: "http://localhost:8085,http://localhost:8090,http://127.0.0.1:8085,http://127.0.0.1:8090"
 
   identity-service:
     build:

@@ -2,6 +2,7 @@ package com.hotelos.maintenance.config;
 
 import com.hotelos.security.config.JwtSecurityConfiguration;
 import com.hotelos.security.converter.JwtRoleConverter;
+import com.hotelos.security.web.RestAccessDeniedHandler;
 import com.hotelos.security.web.RestAuthenticationEntryPoint;
 import jakarta.servlet.DispatcherType;
 import org.springframework.context.annotation.Bean;
@@ -24,7 +25,8 @@ public class SecurityConfig {
             HttpSecurity http,
             JwtDecoder jwtDecoder,
             JwtRoleConverter jwtRoleConverter,
-            RestAuthenticationEntryPoint authenticationEntryPoint
+            RestAuthenticationEntryPoint authenticationEntryPoint,
+            RestAccessDeniedHandler accessDeniedHandler
     ) throws Exception {
         return http
                 .csrf(AbstractHttpConfigurer::disable)
@@ -33,7 +35,9 @@ public class SecurityConfig {
                 .formLogin(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
                         .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
-                        .anyRequest().authenticated()
+                        .requestMatchers("/api/maintenance/dev/**").hasRole("ADMIN")
+                        .requestMatchers("/api/maintenance/**").hasAnyRole("ADMIN", "MANAGER", "MAINTENANCE")
+                        .anyRequest().denyAll()
                 )
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(jwt -> jwt
@@ -41,9 +45,11 @@ public class SecurityConfig {
                                 .jwtAuthenticationConverter(jwtRoleConverter)
                         )
                         .authenticationEntryPoint(authenticationEntryPoint)
+                        .accessDeniedHandler(accessDeniedHandler)
                 )
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint(authenticationEntryPoint)
+                        .accessDeniedHandler(accessDeniedHandler)
                 )
                 .build();
     }

@@ -1,12 +1,31 @@
 server:
   port: 8085
+
 spring:
   application:
     name: dashboard-service
+  datasource:
+    url: ${DASHBOARD_DB_URL:jdbc:postgresql://localhost:5434/hotelos?currentSchema=dashboard_read}
+    username: ${DASHBOARD_DB_USER:dashboard_user}
+    password: ${DASHBOARD_DB_PASSWORD:dashboard_dev_pass}
+    driver-class-name: org.postgresql.Driver
+  flyway:
+    enabled: true
+    schemas: dashboard_read
+    default-schema: dashboard_read
+    create-schemas: false
+    locations: classpath:db/migration
   rabbitmq:
     host: ${SPRING_RABBITMQ_HOST:localhost}
     port: 5672
     username: guest
     password: guest
+
 hotelos:
-  dashboard-token: ${DASHBOARD_TOKEN:hotelos-demo-token}
+  jwt:
+    public-key-path: ${HOTELOS_JWT_PUBLIC_KEY_PATH:secrets/jwt-public.pem}
+    kid: ${HOTELOS_JWT_KID:hotelos-rsa-key-1}
+    issuer: ${HOTELOS_JWT_ISSUER:hotelos-identity}
+    audience: ${HOTELOS_JWT_AUDIENCE:hotelos-api}
+  ws:
+    allowed-origins: ${HOTELOS_WS_ALLOWED_ORIGINS:http://localhost:8085,http://localhost:8090,http://127.0.0.1:8085,http://127.0.0.1:8090}

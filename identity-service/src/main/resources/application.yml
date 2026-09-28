@@ -41,6 +41,8 @@ hotelos:
     private-key-path: ${HOTELOS_JWT_PRIVATE_KEY_PATH:secrets/jwt-private.pem}
     public-key-path: ${HOTELOS_JWT_PUBLIC_KEY_PATH:secrets/jwt-public.pem}
     kid: ${HOTELOS_JWT_KID:hotelos-rsa-key-1}
+    issuer: ${HOTELOS_JWT_ISSUER:hotelos-identity}
+    audience: ${HOTELOS_JWT_AUDIENCE:hotelos-api}
   bootstrap:
     admin:
       username: ${HOTELOS_BOOTSTRAP_ADMIN_USERNAME:}

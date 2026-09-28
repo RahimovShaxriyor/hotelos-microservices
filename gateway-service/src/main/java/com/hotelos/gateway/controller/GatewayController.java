@@ -120,6 +120,18 @@ public class GatewayController {
         return ResponseEntity.noContent().build();
     }
 
+    @Operation(summary = "Issue WebSocket ticket for Dashboard", description = "Issue a short-lived one-time WebSocket ticket for ADMIN and MANAGER", tags = {"Authentication"})
+    @PostMapping(value = "/api/ws/tickets/dashboard", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<JsonNode> issueDashboardWsTicket(@RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader) {
+        ResponseEntity<JsonNode> response = postWithAuth(identityClient, "/api/ws/tickets/dashboard", null, authHeader);
+        return ResponseEntity
+                .status(response.getStatusCode())
+                .header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .header("Pragma", "no-cache")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(response.getBody());
+    }
+
     // -------------------------------------------------------------------------
     // Reception
     // -------------------------------------------------------------------------

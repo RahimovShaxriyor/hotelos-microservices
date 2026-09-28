@@ -1,8 +1,8 @@
 package com.hotelos.gateway.config;
 
-import com.hotelos.gateway.security.RestAccessDeniedHandler;
 import com.hotelos.security.config.JwtSecurityConfiguration;
 import com.hotelos.security.converter.JwtRoleConverter;
+import com.hotelos.security.web.RestAccessDeniedHandler;
 import com.hotelos.security.web.RestAuthenticationEntryPoint;
 import jakarta.servlet.DispatcherType;
 import org.springframework.beans.factory.annotation.Value;
@@ -39,7 +39,7 @@ public class SecurityConfig {
             JwtRoleConverter jwtRoleConverter,
             RestAuthenticationEntryPoint authenticationEntryPoint,
             RestAccessDeniedHandler accessDeniedHandler,
-            @Value("${hotelos.cors.allowed-origins:http://localhost:8085,http://localhost:3000,http://localhost:5173}") String allowedOriginsStr
+            @Value("${hotelos.cors.allowed-origins:http://localhost:8085,http://localhost:8090,http://127.0.0.1:8085,http://127.0.0.1:8090}") String allowedOriginsStr
     ) {
         this.jwtDecoder = jwtDecoder;
         this.jwtRoleConverter = jwtRoleConverter;
@@ -75,8 +75,10 @@ public class SecurityConfig {
                         .requestMatchers("/api/room-service/**").hasAnyRole("ADMIN", "MANAGER", "ROOM_SERVICE")
                         .requestMatchers("/api/maintenance/**").hasAnyRole("ADMIN", "MANAGER", "MAINTENANCE")
                         .requestMatchers("/api/dashboard/**").hasAnyRole("ADMIN", "MANAGER")
-                        // All other routes require authentication
-                        .anyRequest().authenticated()
+                        // WebSocket tickets
+                        .requestMatchers(HttpMethod.POST, "/api/ws/tickets/dashboard").hasAnyRole("ADMIN", "MANAGER")
+                        // Fail-closed fallback: deny all other requests
+                        .anyRequest().denyAll()
                 )
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(jwt -> jwt

@@ -2,6 +2,7 @@ package com.hotelos.dashboard.config;
 
 import com.hotelos.security.config.JwtSecurityConfiguration;
 import com.hotelos.security.converter.JwtRoleConverter;
+import com.hotelos.security.web.RestAccessDeniedHandler;
 import com.hotelos.security.web.RestAuthenticationEntryPoint;
 import jakarta.servlet.DispatcherType;
 import org.springframework.context.annotation.Bean;
@@ -24,7 +25,8 @@ public class SecurityConfig {
             HttpSecurity http,
             JwtDecoder jwtDecoder,
             JwtRoleConverter jwtRoleConverter,
-            RestAuthenticationEntryPoint authenticationEntryPoint
+            RestAuthenticationEntryPoint authenticationEntryPoint,
+            RestAccessDeniedHandler accessDeniedHandler
     ) throws Exception {
         return http
                 .csrf(AbstractHttpConfigurer::disable)
@@ -36,7 +38,9 @@ public class SecurityConfig {
                         .requestMatchers("/api/dashboard/health").permitAll()
                         .requestMatchers("/ws/dashboard/**").permitAll()
                         .requestMatchers("/", "/index.html", "/favicon.ico", "/static/**").permitAll()
-                        .anyRequest().authenticated()
+                        .requestMatchers("/api/dashboard/dev/**").hasRole("ADMIN")
+                        .requestMatchers("/api/dashboard/**").hasAnyRole("ADMIN", "MANAGER")
+                        .anyRequest().denyAll()
                 )
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(jwt -> jwt
@@ -44,9 +48,11 @@ public class SecurityConfig {
                                 .jwtAuthenticationConverter(jwtRoleConverter)
                         )
                         .authenticationEntryPoint(authenticationEntryPoint)
+                        .accessDeniedHandler(accessDeniedHandler)
                 )
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint(authenticationEntryPoint)
+                        .accessDeniedHandler(accessDeniedHandler)
                 )
                 .build();
     }
