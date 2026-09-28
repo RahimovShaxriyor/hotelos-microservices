@@ -8,6 +8,7 @@
 
     <modules>
         <module>hotelos-common</module>
+        <module>hotelos-security</module>
         <module>reception-service</module>
         <module>housekeeping-service</module>
         <module>room-service</module>
@@ -34,6 +35,11 @@
             <dependency>
                 <groupId>com.hotelos</groupId>
                 <artifactId>hotelos-common</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.hotelos</groupId>
+                <artifactId>hotelos-security</artifactId>
                 <version>${project.version}</version>
             </dependency>
         </dependencies>

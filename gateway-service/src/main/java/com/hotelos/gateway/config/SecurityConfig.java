@@ -1,11 +1,14 @@
 package com.hotelos.gateway.config;
 
-import com.hotelos.gateway.security.JwtRoleConverter;
 import com.hotelos.gateway.security.RestAccessDeniedHandler;
-import com.hotelos.gateway.security.RestAuthenticationEntryPoint;
+import com.hotelos.security.config.JwtSecurityConfiguration;
+import com.hotelos.security.converter.JwtRoleConverter;
+import com.hotelos.security.web.RestAuthenticationEntryPoint;
+import jakarta.servlet.DispatcherType;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -22,6 +25,7 @@ import java.util.List;
 
 @Configuration
 @EnableWebSecurity
+@Import(JwtSecurityConfiguration.class)
 public class SecurityConfig {
 
     private final JwtDecoder jwtDecoder;
@@ -56,6 +60,7 @@ public class SecurityConfig {
                 .formLogin(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .authorizeHttpRequests(auth -> auth
+                        .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                         // Public endpoints
                         .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/refresh", "/api/auth/logout").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/gateway/health", "/api/gateway/info").permitAll()

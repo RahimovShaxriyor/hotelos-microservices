@@ -1,4 +1,4 @@
-package com.hotelos.gateway.config;
+package com.hotelos.security.config;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,7 +25,7 @@ public class RsaPublicKeyProvider {
     private final String audience;
 
     public RsaPublicKeyProvider(
-            @Value("${hotelos.jwt.public-key-path:secrets/jwt-public.pem}") String publicKeyPath,
+            @Value("${hotelos.jwt.public-key-path:${HOTELOS_JWT_PUBLIC_KEY_PATH:secrets/jwt-public.pem}}") String publicKeyPath,
             @Value("${hotelos.jwt.kid:hotelos-rsa-key-1}") String keyId,
             @Value("${hotelos.jwt.issuer:hotelos-identity}") String issuer,
             @Value("${hotelos.jwt.audience:hotelos-api}") String audience

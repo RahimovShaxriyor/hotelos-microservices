@@ -15,6 +15,7 @@ import com.hotelos.gateway.dto.RefreshRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -418,17 +419,20 @@ public class GatewayController {
 
     @Operation(summary = "Run TS-06 scenario", tags = {"Gateway"})
     @PostMapping("/api/demo/run/ts-06")
-    public ResponseEntity<JsonNode> runTs06() {
-        safePostBody(receptionClient, "/api/reception/dev/reset", null);
-        CompletableFuture<JsonNode> first = CompletableFuture.supplyAsync(() -> safePostBody(receptionClient,
-                "/api/reception/check-in", checkInRequest("Concurrent Guest A", "DOUBLE", 1, null, null)));
-        CompletableFuture<JsonNode> second = CompletableFuture.supplyAsync(() -> safePostBody(receptionClient,
-                "/api/reception/check-in", checkInRequest("Concurrent Guest B", "DOUBLE", 1, null, null)));
+    public ResponseEntity<JsonNode> runTs06(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader
+    ) {
+        final String explicitAuth = authHeader;
+        safePostBodyWithAuth(receptionClient, "/api/reception/dev/reset", null, explicitAuth);
+        CompletableFuture<JsonNode> first = CompletableFuture.supplyAsync(() -> safePostBodyWithAuth(receptionClient,
+                "/api/reception/check-in", checkInRequest("Concurrent Guest A", "DOUBLE", 1, null, null), explicitAuth));
+        CompletableFuture<JsonNode> second = CompletableFuture.supplyAsync(() -> safePostBodyWithAuth(receptionClient,
+                "/api/reception/check-in", checkInRequest("Concurrent Guest B", "DOUBLE", 1, null, null), explicitAuth));
         CompletableFuture.allOf(first, second).join();
         ObjectNode body = objectMapper.createObjectNode();
         body.set("firstResult", first.join());
         body.set("secondResult", second.join());
-        body.set("roomsAfter", getBody(receptionClient, "/api/reception/rooms"));
+        body.set("roomsAfter", getBodyWithAuth(receptionClient, "/api/reception/rooms", explicitAuth));
         return ResponseEntity.ok(body);
     }
 
@@ -553,5 +557,55 @@ public class GatewayController {
                 .status(downstream.getStatusCode())
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(downstream.getBody());
+    }
+
+    private JsonNode getBodyWithAuth(RestClient client, String uri, String authHeader) {
+        return getWithAuth(client, uri, authHeader).getBody();
+    }
+
+    private ResponseEntity<JsonNode> getWithAuth(RestClient client, String uri, String authHeader) {
+        RestClient.RequestHeadersSpec<?> request = client.get().uri(uri);
+        if (authHeader != null && !authHeader.isBlank()) {
+            request.header(HttpHeaders.AUTHORIZATION, authHeader);
+        }
+        ResponseEntity<JsonNode> downstream = request
+                .retrieve()
+                .toEntity(JsonNode.class);
+        return cleanGatewayResponse(downstream);
+    }
+
+    private JsonNode safePostBodyWithAuth(RestClient client, String uri, Object body, String authHeader) {
+        try {
+            return postBodyWithAuth(client, uri, body, authHeader);
+        } catch (RestClientResponseException ex) {
+            return safeError(ex);
+        } catch (Exception ex) {
+            ObjectNode error = objectMapper.createObjectNode();
+            error.put("error", "Request failed");
+            error.put("message", "The demo step could not be completed safely.");
+            return error;
+        }
+    }
+
+    private JsonNode postBodyWithAuth(RestClient client, String uri, Object body, String authHeader) {
+        return postWithAuth(client, uri, body, authHeader).getBody();
+    }
+
+    private ResponseEntity<JsonNode> postWithAuth(RestClient client, String uri, Object body, String authHeader) {
+        RestClient.RequestBodySpec request = client.post().uri(uri);
+        if (authHeader != null && !authHeader.isBlank()) {
+            request.header(HttpHeaders.AUTHORIZATION, authHeader);
+        }
+        ResponseEntity<JsonNode> downstream;
+        if (body == null) {
+            downstream = request.retrieve().toEntity(JsonNode.class);
+        } else {
+            downstream = request
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .toEntity(JsonNode.class);
+        }
+        return cleanGatewayResponse(downstream);
     }
 }

@@ -30,6 +30,11 @@
         </dependency>
         <dependency>
             <groupId>com.hotelos</groupId>
+            <artifactId>hotelos-security</artifactId>
+            <version>1.0.0</version>
+        </dependency>
+        <dependency>
+            <groupId>com.hotelos</groupId>
             <artifactId>hotelos-common</artifactId>
             <version>1.0.0</version>
         </dependency>

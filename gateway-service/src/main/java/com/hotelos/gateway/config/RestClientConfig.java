@@ -30,12 +30,14 @@ public class RestClientConfig {
                 request.getHeaders().remove(spoofed);
             }
             if (!request.getURI().getPath().startsWith("/api/auth")) {
-                RequestAttributes attributes = RequestContextHolder.getRequestAttributes();
-                if (attributes instanceof ServletRequestAttributes servletAttributes) {
-                    HttpServletRequest servletRequest = servletAttributes.getRequest();
-                    String authHeader = servletRequest.getHeader(HttpHeaders.AUTHORIZATION);
-                    if (authHeader != null && authHeader.startsWith("Bearer ")) {
-                        request.getHeaders().set(HttpHeaders.AUTHORIZATION, authHeader);
+                if (!request.getHeaders().containsKey(HttpHeaders.AUTHORIZATION)) {
+                    RequestAttributes attributes = RequestContextHolder.getRequestAttributes();
+                    if (attributes instanceof ServletRequestAttributes servletAttributes) {
+                        HttpServletRequest servletRequest = servletAttributes.getRequest();
+                        String authHeader = servletRequest.getHeader(HttpHeaders.AUTHORIZATION);
+                        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+                            request.getHeaders().set(HttpHeaders.AUTHORIZATION, authHeader);
+                        }
                     }
                 }
             }
