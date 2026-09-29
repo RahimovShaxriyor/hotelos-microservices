@@ -1,9 +1,6 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: hotelos-postgres
-    ports:
-      - "${POSTGRES_PORT:-5434}:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres_dev_password}
@@ -29,6 +26,8 @@ services:
     volumes:
       - hotelos-postgres-data:/var/lib/postgresql/data
       - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - internal-data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-hotelos}"]
       interval: 5s
@@ -37,13 +36,11 @@ services:
 
   rabbitmq:
     image: rabbitmq:3.13-management
-    container_name: hotelos-rabbitmq
-    ports:
-      - "5672:5672"
-      - "15672:15672"
     environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-guest}
+    networks:
+      - internal-data
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
       interval: 10s
@@ -54,120 +51,159 @@ services:
     build:
       context: .
       dockerfile: ./reception-service/Dockerfile
-    container_name: hotelos-reception
     depends_on:
       rabbitmq:
         condition: service_healthy
       postgres:
         condition: service_healthy
-    ports:
-      - "8081:8081"
     volumes:
       - ./secrets/jwt-public.pem:/secrets/jwt-public.pem:ro
     environment:
       SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_USERNAME: ${RABBITMQ_DEFAULT_USER:-guest}
+      SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_DEFAULT_PASS:-guest}
       RECEPTION_DB_URL: jdbc:postgresql://postgres:5432/hotelos
       RECEPTION_DB_USER: ${RECEPTION_DB_USER:-reception_user}
       RECEPTION_DB_PASSWORD: ${RECEPTION_DB_PASSWORD:-reception_dev_pass}
       HOTELOS_JWT_PUBLIC_KEY_PATH: /secrets/jwt-public.pem
+    networks:
+      - internal-app
+      - internal-data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -o /dev/null -w '%{http_code}' http://localhost:8081/api/rooms | grep -qE '200|401|403' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
 
   housekeeping-service:
     build:
       context: .
       dockerfile: ./housekeeping-service/Dockerfile
-    container_name: hotelos-housekeeping
     depends_on:
       rabbitmq:
         condition: service_healthy
       postgres:
         condition: service_healthy
-    ports:
-      - "8082:8082"
     volumes:
       - ./secrets/jwt-public.pem:/secrets/jwt-public.pem:ro
     environment:
       SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_USERNAME: ${RABBITMQ_DEFAULT_USER:-guest}
+      SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_DEFAULT_PASS:-guest}
       HOUSEKEEPING_DB_URL: jdbc:postgresql://postgres:5432/hotelos
       HOUSEKEEPING_DB_USER: ${HOUSEKEEPING_DB_USER:-housekeeping_user}
       HOUSEKEEPING_DB_PASSWORD: ${HOUSEKEEPING_DB_PASSWORD:-housekeeping_dev_pass}
       HOTELOS_JWT_PUBLIC_KEY_PATH: /secrets/jwt-public.pem
+    networks:
+      - internal-app
+      - internal-data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -o /dev/null -w '%{http_code}' http://localhost:8082/api/housekeeping/tasks | grep -qE '200|401|403' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
 
   room-service:
     build:
       context: .
       dockerfile: ./room-service/Dockerfile
-    container_name: hotelos-room-service
     depends_on:
       rabbitmq:
         condition: service_healthy
       postgres:
         condition: service_healthy
-    ports:
-      - "8083:8083"
     volumes:
       - ./secrets/jwt-public.pem:/secrets/jwt-public.pem:ro
     environment:
       SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_USERNAME: ${RABBITMQ_DEFAULT_USER:-guest}
+      SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_DEFAULT_PASS:-guest}
       ROOM_SERVICE_DB_URL: jdbc:postgresql://postgres:5432/hotelos
       ROOM_SERVICE_DB_USER: ${ROOM_SERVICE_DB_USER:-room_service_user}
       ROOM_SERVICE_DB_PASSWORD: ${ROOM_SERVICE_DB_PASSWORD:-room_service_dev_pass}
       HOTELOS_JWT_PUBLIC_KEY_PATH: /secrets/jwt-public.pem
+    networks:
+      - internal-app
+      - internal-data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -o /dev/null -w '%{http_code}' http://localhost:8083/api/room-service/orders | grep -qE '200|401|403' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
 
   maintenance-service:
     build:
       context: .
       dockerfile: ./maintenance-service/Dockerfile
-    container_name: hotelos-maintenance
     depends_on:
       rabbitmq:
         condition: service_healthy
       postgres:
         condition: service_healthy
-    ports:
-      - "8084:8084"
     volumes:
       - ./secrets/jwt-public.pem:/secrets/jwt-public.pem:ro
     environment:
       SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_USERNAME: ${RABBITMQ_DEFAULT_USER:-guest}
+      SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_DEFAULT_PASS:-guest}
       MAINTENANCE_DB_URL: jdbc:postgresql://postgres:5432/hotelos?currentSchema=maintenance
       MAINTENANCE_DB_USER: ${MAINTENANCE_DB_USER:-maintenance_user}
       MAINTENANCE_DB_PASSWORD: ${MAINTENANCE_DB_PASSWORD:-maintenance_dev_pass}
       HOTELOS_JWT_PUBLIC_KEY_PATH: /secrets/jwt-public.pem
+    networks:
+      - internal-app
+      - internal-data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -o /dev/null -w '%{http_code}' http://localhost:8084/api/maintenance/issues | grep -qE '200|401|403' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
 
   dashboard-service:
     build:
       context: .
       dockerfile: ./dashboard-service/Dockerfile
-    container_name: hotelos-dashboard
     depends_on:
       rabbitmq:
         condition: service_healthy
       postgres:
         condition: service_healthy
-    ports:
-      - "8085:8085"
     volumes:
       - ./secrets/jwt-public.pem:/secrets/jwt-public.pem:ro
     environment:
       SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_USERNAME: ${RABBITMQ_DEFAULT_USER:-guest}
+      SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_DEFAULT_PASS:-guest}
       DASHBOARD_DB_URL: jdbc:postgresql://postgres:5432/hotelos?currentSchema=dashboard_read
       DASHBOARD_DB_USER: ${DASHBOARD_DB_USER:-dashboard_user}
       DASHBOARD_DB_PASSWORD: ${DASHBOARD_DB_PASSWORD:-dashboard_dev_pass}
       HOTELOS_JWT_PUBLIC_KEY_PATH: /secrets/jwt-public.pem
-      HOTELOS_WS_ALLOWED_ORIGINS: "http://localhost:8085,http://localhost:8090,http://127.0.0.1:8085,http://127.0.0.1:8090"
+      HOTELOS_WS_ALLOWED_ORIGINS: ${HOTELOS_WS_ALLOWED_ORIGINS:-http://localhost:8085,http://localhost:8090,http://127.0.0.1:8085,http://127.0.0.1:8090}
+    networks:
+      - edge-net
+      - internal-app
+      - internal-data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f -s http://localhost:8085/api/dashboard/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
 
   identity-service:
     build:
       context: .
       dockerfile: ./identity-service/Dockerfile
-    container_name: hotelos-identity
     depends_on:
       postgres:
         condition: service_healthy
-    ports:
-      - "8086:8086"
     volumes:
-      - ./secrets:/secrets:ro
+      - ./secrets/jwt-private.pem:/secrets/jwt-private.pem:ro
+      - ./secrets/jwt-public.pem:/secrets/jwt-public.pem:ro
     environment:
       IDENTITY_DB_URL: jdbc:postgresql://postgres:5432/hotelos?currentSchema=identity
       IDENTITY_DB_USER: ${IDENTITY_DB_USER:-identity_user}
@@ -176,20 +212,33 @@ services:
       HOTELOS_BOOTSTRAP_ADMIN_PASSWORD: ${HOTELOS_BOOTSTRAP_ADMIN_PASSWORD:-}
       HOTELOS_JWT_PRIVATE_KEY_PATH: /secrets/jwt-private.pem
       HOTELOS_JWT_PUBLIC_KEY_PATH: /secrets/jwt-public.pem
+    networks:
+      - internal-app
+      - internal-data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f -s http://localhost:8086/api/identity/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
 
   gateway-service:
     build:
       context: .
       dockerfile: ./gateway-service/Dockerfile
-    container_name: hotelos-gateway
     depends_on:
-      - reception-service
-      - housekeeping-service
-      - room-service
-      - maintenance-service
-      - identity-service
-    ports:
-      - "8090:8090"
+      reception-service:
+        condition: service_healthy
+      housekeeping-service:
+        condition: service_healthy
+      room-service:
+        condition: service_healthy
+      maintenance-service:
+        condition: service_healthy
+      identity-service:
+        condition: service_healthy
+      dashboard-service:
+        condition: service_healthy
     volumes:
       - ./secrets/jwt-public.pem:/secrets/jwt-public.pem:ro
     environment:
@@ -200,6 +249,24 @@ services:
       DASHBOARD_SERVICE_URL: http://dashboard-service:8085
       IDENTITY_SERVICE_URL: http://identity-service:8086
       HOTELOS_JWT_PUBLIC_KEY_PATH: /secrets/jwt-public.pem
+      HOTELOS_CORS_ALLOWED_ORIGINS: ${HOTELOS_CORS_ALLOWED_ORIGINS:-http://localhost:8085,http://localhost:8090,http://127.0.0.1:8085,http://127.0.0.1:8090}
+    networks:
+      - edge-net
+      - internal-app
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f -s http://localhost:8090/api/gateway/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+networks:
+  edge-net:
+    driver: bridge
+  internal-app:
+    driver: bridge
+  internal-data:
+    driver: bridge
 
 volumes:
   hotelos-postgres-data:

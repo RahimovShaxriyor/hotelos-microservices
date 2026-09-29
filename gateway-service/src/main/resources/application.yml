@@ -1,17 +1,26 @@
 server:
   port: 8090
+  shutdown: graceful
+  forward-headers-strategy: framework
+  error:
+    include-stacktrace: never
+    include-message: never
 
 spring:
   application:
     name: gateway-service
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
 
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
     operations-sorter: method
     tags-sorter: alpha
+    enabled: ${HOTELOS_SWAGGER_ENABLED:true}
   api-docs:
     path: /v3/api-docs
+    enabled: ${HOTELOS_SWAGGER_ENABLED:true}
 
 hotelos:
   jwt:

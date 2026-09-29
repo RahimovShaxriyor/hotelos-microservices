@@ -24,7 +24,7 @@
     <h1>HotelOS Live Operations Dashboard</h1>
     <p class="small">Secure WebSocket connection via short-lived RS256 one-time ticket.</p>
     <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 10px;">
-        <input id="gatewayUrl" placeholder="Gateway URL" value="http://localhost:8090" style="width: 180px;" />
+        <input id="gatewayUrl" placeholder="Gateway URL (auto)" style="width: 180px;" />
         <input id="username" placeholder="Username" value="admin" style="width: 120px;" />
         <input id="password" type="password" placeholder="Password" style="width: 140px;" />
         <span class="small" style="margin: 0 4px;">or Access JWT:</span>
@@ -61,7 +61,8 @@
     async function connect() {
         const statusEl = document.getElementById('status');
         const connectBtn = document.getElementById('connectBtn');
-        const gatewayUrl = (document.getElementById('gatewayUrl').value || 'http://localhost:8090').replace(/\/+$/, '');
+        const defaultGateway = (window.location.port === '8085') ? 'http://localhost:8090' : window.location.origin;
+        const gatewayUrl = (document.getElementById('gatewayUrl').value.trim() || defaultGateway).replace(/\/+$/, '');
         const username = document.getElementById('username').value.trim();
         const password = document.getElementById('password').value;
         let accessJwt = document.getElementById('accessJwt').value.trim();

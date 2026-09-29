@@ -1,9 +1,15 @@
 server:
   port: 8085
+  shutdown: graceful
+  error:
+    include-stacktrace: never
+    include-message: never
 
 spring:
   application:
     name: dashboard-service
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
   datasource:
     url: ${DASHBOARD_DB_URL:jdbc:postgresql://localhost:5434/hotelos?currentSchema=dashboard_read}
     username: ${DASHBOARD_DB_USER:dashboard_user}
@@ -18,8 +24,8 @@ spring:
   rabbitmq:
     host: ${SPRING_RABBITMQ_HOST:localhost}
     port: 5672
-    username: guest
-    password: guest
+    username: ${SPRING_RABBITMQ_USERNAME:guest}
+    password: ${SPRING_RABBITMQ_PASSWORD:guest}
 
 hotelos:
   jwt:

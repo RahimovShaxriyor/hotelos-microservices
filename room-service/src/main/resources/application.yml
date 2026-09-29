@@ -1,8 +1,14 @@
 server:
   port: 8083
+  shutdown: graceful
+  error:
+    include-stacktrace: never
+    include-message: never
 spring:
   application:
     name: room-service
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
   datasource:
     url: ${ROOM_SERVICE_DB_URL:jdbc:postgresql://localhost:5434/hotelos}
     username: ${ROOM_SERVICE_DB_USER:room_service_user}
@@ -25,8 +31,8 @@ spring:
   rabbitmq:
     host: ${SPRING_RABBITMQ_HOST:localhost}
     port: 5672
-    username: guest
-    password: guest
+    username: ${SPRING_RABBITMQ_USERNAME:guest}
+    password: ${SPRING_RABBITMQ_PASSWORD:guest}
     publisher-confirm-type: correlated
     publisher-returns: true
     template:

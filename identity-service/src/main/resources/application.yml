@@ -1,9 +1,15 @@
 server:
   port: 8086
+  shutdown: graceful
+  error:
+    include-stacktrace: never
+    include-message: never
 
 spring:
   application:
     name: identity-service
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
 
   datasource:
     url: ${IDENTITY_DB_URL:jdbc:postgresql://localhost:5434/hotelos?currentSchema=identity}
@@ -31,10 +37,12 @@ spring:
 springdoc:
   api-docs:
     path: /v3/api-docs
+    enabled: ${HOTELOS_SWAGGER_ENABLED:true}
   swagger-ui:
     path: /swagger-ui.html
     tags-sorter: alpha
     operations-sorter: alpha
+    enabled: ${HOTELOS_SWAGGER_ENABLED:true}
 
 hotelos:
   jwt:

@@ -777,7 +777,7 @@ erDiagram
    - Maps JWT `roles` array to Spring Granted Authorities (`ROLE_*`) and enforces coarse-grained RBAC per service.
    - Forwards original `Authorization: Bearer <token>` to downstream internal microservices while stripping client spoofing headers.
 3. **`dashboard-service`**:
-   - Protects WebSocket connections via query parameter matching `?token=hotelos-demo-token`.
+   - Protects WebSocket connections via query parameter matching `?token=hotelos-demo-token` (*[LEGACY DEVELOPMENT WEBSOCKET AUTH]* — scheduled to be replaced in stage P2.7 with secure one-time WS tickets; DO NOT use as production security).
 
 ---
 
@@ -890,7 +890,7 @@ mvn spring-boot:run -pl gateway-service
 | `POSTGRES_PORT` | No | Host port mapped to PostgreSQL | `5434` |
 | `SPRING_RABBITMQ_HOST` | No | RabbitMQ broker hostname | `localhost` (host) / `rabbitmq` (docker) |
 | `HOTELOS_JWT_PUBLIC_KEY_PATH` | No | Path to RSA public key (PEM) for JWT verification | `secrets/jwt-public.pem` |
-| `DASHBOARD_TOKEN` | No | Token required for WebSocket handshake | `hotelos-demo-token` |
+| `DASHBOARD_TOKEN` | No | Legacy token for WebSocket handshake (dev only, to be replaced in P2.7) | `hotelos-demo-token` |
 | `RECEPTION_DB_USER` | No | Username for reception schema | `reception_user` |
 | `RECEPTION_DB_PASSWORD` | No | Password for reception user | `reception_dev_pass` |
 | `HOUSEKEEPING_DB_USER` | No | Username for housekeeping schema | `housekeeping_user` |
@@ -1092,7 +1092,7 @@ open http://localhost:8085
 | **API Gateway** | `http://localhost:8090` | Unified REST entry point |
 | **Swagger UI** | `http://localhost:8090/swagger-ui.html` | Interactive API explorer & scenario runner |
 | **Dashboard UI** | `http://localhost:8085` | Live WebSocket operational monitoring console |
-| **Dashboard WebSocket** | `ws://localhost:8085/ws/dashboard?token=hotelos-demo-token` | Native WebSocket event stream |
+| **Dashboard WebSocket** | `ws://localhost:8085/ws/dashboard?token=hotelos-demo-token` | Native WebSocket event stream (*legacy dev auth, scheduled for P2.7*) |
 | **RabbitMQ Management** | `http://localhost:15672` | Username: `guest` \| Password: `guest` |
 | **PostgreSQL Database** | `localhost:5434` (DB: `hotelos`) | User: `postgres` \| Password: `postgres_dev_password` |
 | **Identity Service** | `http://localhost:8086` | Direct auth & JWT endpoint |

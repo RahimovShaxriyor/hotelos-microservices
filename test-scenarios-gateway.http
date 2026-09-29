@@ -19,7 +19,7 @@ Content-Type: application/json
 
 {
   "username": "admin.staff",
-  "password": "SuperSecretPass123!"
+  "password": "{{admin_password}}"
 }
 
 ### Auth refresh

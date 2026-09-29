@@ -1,0 +1,48 @@
+# Default local development override.
+# Allows standard 'docker compose up' to expose dev host ports and enable Swagger.
+# For production deployment, use:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+services:
+  postgres:
+    ports:
+      - "${POSTGRES_PORT:-5434}:5432"
+
+  rabbitmq:
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+  reception-service:
+    ports:
+      - "8081:8081"
+
+  housekeeping-service:
+    ports:
+      - "8082:8082"
+
+  room-service:
+    ports:
+      - "8083:8083"
+
+  maintenance-service:
+    ports:
+      - "8084:8084"
+
+  dashboard-service:
+    ports:
+      - "8085:8085"
+    environment:
+      HOTELOS_WS_ALLOWED_ORIGINS: "http://localhost:8085,http://localhost:8090,http://127.0.0.1:8085,http://127.0.0.1:8090"
+
+  identity-service:
+    ports:
+      - "8086:8086"
+    environment:
+      HOTELOS_SWAGGER_ENABLED: "true"
+
+  gateway-service:
+    ports:
+      - "8090:8090"
+    environment:
+      HOTELOS_SWAGGER_ENABLED: "true"
+      HOTELOS_CORS_ALLOWED_ORIGINS: "http://localhost:8085,http://localhost:8090,http://127.0.0.1:8085,http://127.0.0.1:8090"
