@@ -7,6 +7,7 @@ import com.hotelos.roomservice.dto.CreateOrderRequest;
 import com.hotelos.roomservice.event.LocalOrderDeliveredEvent;
 import com.hotelos.roomservice.event.LocalOrderUpdatedEvent;
 import com.hotelos.roomservice.exception.HotelValidationException;
+import com.hotelos.common.currency.CurrencyValidator;
 import com.hotelos.common.event.EventEnvelope;
 import com.hotelos.common.event.EventTypes;
 import com.hotelos.common.event.MessagingConstants;
@@ -55,10 +56,17 @@ public class OrderWorkflowService {
         UUID orderId = UUID.randomUUID();
         Instant now = Instant.now();
 
+        String currency = CurrencyValidator.DEFAULT_CURRENCY;
+        if (request.getCurrency() != null && !request.getCurrency().isBlank()) {
+            CurrencyValidator.validate(request.getCurrency());
+            currency = request.getCurrency().trim().toUpperCase(Locale.ROOT);
+        }
+
         RoomServiceOrderEntity orderEntity = new RoomServiceOrderEntity(
                 orderId,
                 request.getRoomNumber().trim(),
                 OrderStatus.RECEIVED,
+                currency,
                 now,
                 now
         );
@@ -178,6 +186,7 @@ public class OrderWorkflowService {
                                     domainOrder.getOrderId(),
                                     domainOrder.getRoomNumber(),
                                     domainOrder.total(),
+                                    domainOrder.getCurrency(),
                                     order.getDeliveredAt()
                             )
                     ),
@@ -292,6 +301,7 @@ public class OrderWorkflowService {
                 entity.getRoomNumber(),
                 items,
                 entity.getStatus(),
+                entity.getCurrency(),
                 entity.getCreatedAt(),
                 entity.getStatusChangedAt()
         );
@@ -314,6 +324,9 @@ public class OrderWorkflowService {
         }
         if (request.getRoomNumber().trim().length() > 16) {
             throw new HotelValidationException("Room number cannot exceed 16 characters");
+        }
+        if (request.getCurrency() != null && !request.getCurrency().isBlank()) {
+            CurrencyValidator.validate(request.getCurrency());
         }
         if (request.getItems() == null || request.getItems().isEmpty()) {
             throw new HotelValidationException("At least one order item is required");

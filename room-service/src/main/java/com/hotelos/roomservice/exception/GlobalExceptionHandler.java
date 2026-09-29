@@ -13,4 +13,9 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleValidation(HotelValidationException ex) {
         return ResponseEntity.badRequest().body(Map.of("message", ex.getMessage(), "timestamp", Instant.now().toString()));
     }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String, Object>> handleIllegalArgument(IllegalArgumentException ex) {
+        return ResponseEntity.badRequest().body(Map.of("message", ex.getMessage(), "timestamp", Instant.now().toString()));
+    }
 }

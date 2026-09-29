@@ -23,6 +23,9 @@ public class RoomServiceChargeEntity {
     @Column(name = "amount", precision = 19, scale = 2, nullable = false)
     private BigDecimal amount;
 
+    @Column(name = "currency", length = 3, nullable = false)
+    private String currency = "UZS";
+
     @Column(name = "source_event_id")
     private UUID sourceEventId;
 
@@ -35,11 +38,12 @@ public class RoomServiceChargeEntity {
     public RoomServiceChargeEntity() {
     }
 
-    public RoomServiceChargeEntity(UUID id, String orderId, UUID stayId, BigDecimal amount, UUID sourceEventId, Instant chargedAt) {
+    public RoomServiceChargeEntity(UUID id, String orderId, UUID stayId, BigDecimal amount, String currency, UUID sourceEventId, Instant chargedAt) {
         this.id = id != null ? id : UUID.randomUUID();
         this.orderId = orderId;
         this.stayId = stayId;
         this.amount = amount;
+        this.currency = currency != null ? currency : "UZS";
         this.sourceEventId = sourceEventId;
         this.chargedAt = chargedAt != null ? chargedAt : Instant.now();
         this.createdAt = Instant.now();
@@ -66,6 +70,9 @@ public class RoomServiceChargeEntity {
 
     public BigDecimal getAmount() { return amount; }
     public void setAmount(BigDecimal amount) { this.amount = amount; }
+
+    public String getCurrency() { return currency; }
+    public void setCurrency(String currency) { this.currency = currency; }
 
     public UUID getSourceEventId() { return sourceEventId; }
     public void setSourceEventId(UUID sourceEventId) { this.sourceEventId = sourceEventId; }

@@ -28,6 +28,9 @@ public class RoomServiceOrderEntity implements Persistable<UUID> {
     @Column(name = "status", nullable = false, length = 32)
     private OrderStatus status;
 
+    @Column(name = "currency", nullable = false, length = 3)
+    private String currency = "UZS";
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -48,9 +51,14 @@ public class RoomServiceOrderEntity implements Persistable<UUID> {
     }
 
     public RoomServiceOrderEntity(UUID id, String roomNumber, OrderStatus status, Instant createdAt, Instant statusChangedAt) {
+        this(id, roomNumber, status, "UZS", createdAt, statusChangedAt);
+    }
+
+    public RoomServiceOrderEntity(UUID id, String roomNumber, OrderStatus status, String currency, Instant createdAt, Instant statusChangedAt) {
         this.id = id;
         this.roomNumber = roomNumber;
         this.status = status;
+        this.currency = (currency != null && !currency.isBlank()) ? currency : "UZS";
         this.createdAt = createdAt;
         this.statusChangedAt = statusChangedAt;
         this.isNew = true;
@@ -134,5 +142,13 @@ public class RoomServiceOrderEntity implements Persistable<UUID> {
 
     public void setItems(List<OrderItemEntity> items) {
         this.items = items;
+    }
+
+    public String getCurrency() {
+        return currency;
+    }
+
+    public void setCurrency(String currency) {
+        this.currency = currency;
     }
 }

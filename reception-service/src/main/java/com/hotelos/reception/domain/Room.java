@@ -12,6 +12,7 @@ public class Room {
     private final RoomType type;
     private final String proximity;
     private final BigDecimal nightlyRate;
+    private final String currency;
     private OccupancyStatus occupancyStatus;
     private HousekeepingStatus housekeepingStatus;
     private EngineeringStatus engineeringStatus;
@@ -22,10 +23,10 @@ public class Room {
     public Room(String roomNumber, int floor, RoomType type, String proximity, BigDecimal nightlyRate,
                 OccupancyStatus occupancyStatus, HousekeepingStatus housekeepingStatus, EngineeringStatus engineeringStatus,
                 Instant cleanSince, boolean turnoverPending) {
-        this(roomNumber, floor, type, proximity, nightlyRate, occupancyStatus, housekeepingStatus, engineeringStatus, cleanSince, turnoverPending, null);
+        this(roomNumber, floor, type, proximity, nightlyRate, "UZS", occupancyStatus, housekeepingStatus, engineeringStatus, cleanSince, turnoverPending, null);
     }
 
-    public Room(String roomNumber, int floor, RoomType type, String proximity, BigDecimal nightlyRate,
+    public Room(String roomNumber, int floor, RoomType type, String proximity, BigDecimal nightlyRate, String currency,
                 OccupancyStatus occupancyStatus, HousekeepingStatus housekeepingStatus, EngineeringStatus engineeringStatus,
                 Instant cleanSince, boolean turnoverPending, String turnoverCorrelationId) {
         this.roomNumber = roomNumber;
@@ -33,6 +34,7 @@ public class Room {
         this.type = type;
         this.proximity = proximity;
         this.nightlyRate = nightlyRate;
+        this.currency = currency != null ? currency : "UZS";
         this.occupancyStatus = occupancyStatus;
         this.housekeepingStatus = housekeepingStatus;
         this.engineeringStatus = engineeringStatus;
@@ -49,6 +51,7 @@ public class Room {
                 entity.getType(),
                 entity.getProximity(),
                 entity.getNightlyRate(),
+                entity.getCurrency(),
                 entity.getOccupancyStatus(),
                 entity.getHousekeepingStatus(),
                 entity.getEngineeringStatus(),
@@ -63,6 +66,7 @@ public class Room {
     public RoomType getType() { return type; }
     public String getProximity() { return proximity; }
     public BigDecimal getNightlyRate() { return nightlyRate; }
+    public String getCurrency() { return currency; }
     public OccupancyStatus getOccupancyStatus() { return occupancyStatus; }
     public HousekeepingStatus getHousekeepingStatus() { return housekeepingStatus; }
     public EngineeringStatus getEngineeringStatus() { return engineeringStatus; }

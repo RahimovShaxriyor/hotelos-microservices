@@ -15,11 +15,14 @@ import com.hotelos.reception.dto.CheckInRequest;
 import com.hotelos.reception.dto.CheckInResponse;
 import com.hotelos.reception.dto.CheckOutResponse;
 import com.hotelos.reception.exception.HotelValidationException;
+import com.hotelos.reception.exception.ResourceNotFoundException;
 import com.hotelos.reception.inbox.ReceptionInboxService;
 import com.hotelos.reception.outbox.ReceptionOutboxService;
+import com.hotelos.reception.persistence.entity.GuestEntity;
 import com.hotelos.reception.persistence.entity.GuestStayEntity;
 import com.hotelos.reception.persistence.entity.RoomEntity;
 import com.hotelos.reception.persistence.entity.RoomServiceChargeEntity;
+import com.hotelos.reception.persistence.repository.GuestRepository;
 import com.hotelos.reception.persistence.repository.GuestStayRepository;
 import com.hotelos.reception.persistence.repository.ReceptionInboxRepository;
 import com.hotelos.reception.persistence.repository.ReceptionOutboxRepository;
@@ -45,6 +48,7 @@ public class RoomInventoryService {
 
     private final RoomRepository roomRepository;
     private final GuestStayRepository guestStayRepository;
+    private final GuestRepository guestRepository;
     private final RoomServiceChargeRepository roomServiceChargeRepository;
     private final BillingService billingService;
     private final ReceptionOutboxService outboxService;
@@ -55,6 +59,7 @@ public class RoomInventoryService {
     public RoomInventoryService(
             RoomRepository roomRepository,
             GuestStayRepository guestStayRepository,
+            GuestRepository guestRepository,
             RoomServiceChargeRepository roomServiceChargeRepository,
             BillingService billingService,
             ReceptionOutboxService outboxService,
@@ -64,6 +69,7 @@ public class RoomInventoryService {
     ) {
         this.roomRepository = roomRepository;
         this.guestStayRepository = guestStayRepository;
+        this.guestRepository = guestRepository;
         this.roomServiceChargeRepository = roomServiceChargeRepository;
         this.billingService = billingService;
         this.outboxService = outboxService;
@@ -88,6 +94,7 @@ public class RoomInventoryService {
     public Map<String, Object> resetAndSeed() {
         roomServiceChargeRepository.deleteAllInBatch();
         guestStayRepository.deleteAllInBatch();
+        guestRepository.deleteAllInBatch();
         roomRepository.deleteAllInBatch();
         inboxRepository.deleteAllInBatch();
         outboxRepository.deleteAllInBatch();
@@ -139,10 +146,14 @@ public class RoomInventoryService {
 
     private void seedExistingGuests() {
         Instant now = Instant.now();
+        GuestEntity guest1 = new GuestEntity(UUID.randomUUID(), "John", "Smith", "john.smith@example.com", "+1-555-0101", false, "Seeded demo guest");
+        GuestEntity guest2 = new GuestEntity(UUID.randomUUID(), "Sara", "Lee", "sara.lee@example.com", "+1-555-0102", true, "Seeded demo VIP guest");
+        guestRepository.saveAll(List.of(guest1, guest2));
+
         List<GuestStayEntity> stays = List.of(
-                new GuestStayEntity(UUID.randomUUID(), "204", "John Smith", LocalDate.now(), 2,
+                new GuestStayEntity(UUID.randomUUID(), guest1.getId(), "204", "John Smith", "UZS", LocalDate.now(), 2,
                         new BigDecimal("140.00"), now.minusSeconds(9000)),
-                new GuestStayEntity(UUID.randomUUID(), "301", "Sara Lee", LocalDate.now(), 3,
+                new GuestStayEntity(UUID.randomUUID(), guest2.getId(), "301", "Sara Lee", "UZS", LocalDate.now(), 3,
                         new BigDecimal("150.00"), now.minusSeconds(12000))
         );
         guestStayRepository.saveAll(stays);
@@ -226,6 +237,7 @@ public class RoomInventoryService {
         result.put("bookedNights", stay.getBookedNights());
         result.put("roomServiceCharges", rsCharges);
         result.put("total", total);
+        result.put("currency", stay.getCurrency());
         return result;
     }
 
@@ -233,6 +245,34 @@ public class RoomInventoryService {
     public CheckInResponse checkIn(CheckInRequest request) {
         validateCheckIn(request);
         RoomType requestedType = parseRoomType(request.getRoomType());
+
+        UUID guestId;
+        String guestName;
+        if (request.getGuestId() != null) {
+            GuestEntity guest = guestRepository.findById(request.getGuestId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Guest not found with ID: " + request.getGuestId()));
+            guestId = guest.getId();
+            guestName = (guest.getFirstName() + " " + guest.getLastName()).trim();
+        } else {
+            String fullName = request.getGuestName().trim();
+            String firstName;
+            String lastName;
+            int firstSpace = fullName.indexOf(' ');
+            if (firstSpace > 0) {
+                firstName = fullName.substring(0, firstSpace).trim();
+                lastName = fullName.substring(firstSpace + 1).trim();
+                if (lastName.isBlank()) {
+                    lastName = "Guest";
+                }
+            } else {
+                firstName = fullName.isBlank() ? "Guest" : fullName;
+                lastName = "Guest";
+            }
+            GuestEntity newGuest = new GuestEntity(UUID.randomUUID(), firstName, lastName, null, null, false, "Auto-created on check-in");
+            guestRepository.save(newGuest);
+            guestId = newGuest.getId();
+            guestName = fullName;
+        }
 
         // Row-level locking candidate selection: selects best candidate with FOR UPDATE SKIP LOCKED
         Optional<RoomEntity> candidate = roomRepository.findAvailableRoomForUpdate(
@@ -251,8 +291,10 @@ public class RoomInventoryService {
 
         GuestStayEntity stay = new GuestStayEntity(
                 UUID.randomUUID(),
+                guestId,
                 selected.getRoomNumber(),
-                request.getGuestName().trim(),
+                guestName,
+                selected.getCurrency(),
                 LocalDate.now(),
                 request.getNights(),
                 selected.getNightlyRate(),
@@ -274,10 +316,12 @@ public class RoomInventoryService {
 
         return new CheckInResponse(
                 stay.getId().toString(),
+                guestId.toString(),
                 stay.getGuestName(),
                 selected.getRoomNumber(),
                 selected.getType().name(),
                 selected.getOccupancyStatus(),
+                stay.getCurrency(),
                 "Guest checked in successfully"
         );
     }
@@ -328,7 +372,7 @@ public class RoomInventoryService {
 
         log.info("Checkout committed for room {} (stay {}), bill total {}", roomNumber, stay.getId(), total);
 
-        return new CheckOutResponse(roomNumber, stay.getGuestName(), total, "Guest checked out and room vacated event published");
+        return new CheckOutResponse(roomNumber, stay.getGuestName(), total, stay.getCurrency(), "Guest checked out and room vacated event published");
     }
 
     @RabbitListener(queues = RabbitConfig.RECEPTION_HOUSEKEEPING_STATUS_QUEUE)
@@ -426,6 +470,10 @@ public class RoomInventoryService {
         // Lock stay row to serialize against concurrent checkout bill calculation
         guestStayRepository.findByIdForUpdate(stay.getId());
 
+        String chargeCurrency = (payload.currency() != null && !payload.currency().isBlank())
+                ? payload.currency().trim()
+                : stay.getCurrency();
+
         // Atomic PostgreSQL deduplication: INSERT ... ON CONFLICT (order_id) DO NOTHING
         UUID chargeId = UUID.randomUUID();
         int affected = roomServiceChargeRepository.insertChargeOnConflictDoNothing(
@@ -433,6 +481,7 @@ public class RoomInventoryService {
                 orderId,
                 stay.getId(),
                 payload.amount(),
+                chargeCurrency,
                 event.eventId(),
                 chargeTime
         );
@@ -461,8 +510,13 @@ public class RoomInventoryService {
         if (request == null) {
             throw new HotelValidationException("Request body is required");
         }
-        if (request.getGuestName() == null || request.getGuestName().isBlank()) {
-            throw new HotelValidationException("Guest name is required");
+        boolean hasGuestId = request.getGuestId() != null;
+        boolean hasGuestName = request.getGuestName() != null && !request.getGuestName().trim().isEmpty();
+        if (hasGuestId && hasGuestName) {
+            throw new HotelValidationException("Provide either guestId or guestName, not both");
+        }
+        if (!hasGuestId && !hasGuestName) {
+            throw new HotelValidationException("Either guestId or guestName must be provided");
         }
         if (request.getNights() <= 0) {
             throw new HotelValidationException("Nights must be greater than zero");

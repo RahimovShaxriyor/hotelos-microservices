@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.hotelos.common.dto.guest.CreateGuestRequest;
+import com.hotelos.common.dto.guest.UpdateGuestRequest;
 import com.hotelos.gateway.config.ServiceUrls;
 import com.hotelos.gateway.dto.CheckInRequest;
 import com.hotelos.gateway.dto.CreateIssueRequest;
@@ -21,10 +23,12 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 @RestController
@@ -199,6 +203,42 @@ public class GatewayController {
     @PostMapping("/api/reception/bills/{roomNumber}/calculate")
     public ResponseEntity<JsonNode> calculateBill(@PathVariable String roomNumber) {
         return post(receptionClient, "/api/reception/bills/" + roomNumber + "/calculate", null);
+    }
+
+    @Operation(summary = "Create guest profile", tags = {"Reception"})
+    @PostMapping(value = "/api/reception/guest-profiles", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<JsonNode> createGuestProfile(@RequestBody CreateGuestRequest request) {
+        return post(receptionClient, "/api/reception/guest-profiles", request);
+    }
+
+    @Operation(summary = "Search guest profiles with pagination and sorting", tags = {"Reception"})
+    @GetMapping("/api/reception/guest-profiles")
+    public ResponseEntity<JsonNode> getGuestProfiles(
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "lastName,asc") String sort
+    ) {
+        UriComponentsBuilder builder = UriComponentsBuilder.fromPath("/api/reception/guest-profiles")
+                .queryParam("page", page)
+                .queryParam("size", size)
+                .queryParam("sort", sort);
+        if (search != null && !search.isBlank()) {
+            builder.queryParam("search", search);
+        }
+        return get(receptionClient, builder.toUriString());
+    }
+
+    @Operation(summary = "Get guest profile by ID", tags = {"Reception"})
+    @GetMapping("/api/reception/guest-profiles/{id}")
+    public ResponseEntity<JsonNode> getGuestProfileById(@PathVariable UUID id) {
+        return get(receptionClient, "/api/reception/guest-profiles/" + id);
+    }
+
+    @Operation(summary = "Update guest profile", tags = {"Reception"})
+    @PutMapping(value = "/api/reception/guest-profiles/{id}", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<JsonNode> updateGuestProfile(@PathVariable UUID id, @RequestBody UpdateGuestRequest request) {
+        return put(receptionClient, "/api/reception/guest-profiles/" + id, request);
     }
 
     // -------------------------------------------------------------------------
@@ -541,6 +581,21 @@ public class GatewayController {
         return cleanGatewayResponse(downstream);
     }
 
+    private ResponseEntity<JsonNode> put(RestClient client, String uri, Object body) {
+        RestClient.RequestBodySpec request = client.put().uri(uri);
+        ResponseEntity<JsonNode> downstream;
+        if (body == null) {
+            downstream = request.retrieve().toEntity(JsonNode.class);
+        } else {
+            downstream = request
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .toEntity(JsonNode.class);
+        }
+        return cleanGatewayResponse(downstream);
+    }
+
     private ResponseEntity<JsonNode> patch(RestClient client, String uri, Object body) {
         RestClient.RequestBodySpec request = client.patch().uri(uri);
         ResponseEntity<JsonNode> downstream;
@@ -565,10 +620,13 @@ public class GatewayController {
     }
 
     private ResponseEntity<JsonNode> cleanGatewayResponse(ResponseEntity<JsonNode> downstream) {
-        return ResponseEntity
+        ResponseEntity.BodyBuilder builder = ResponseEntity
                 .status(downstream.getStatusCode())
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(downstream.getBody());
+                .contentType(MediaType.APPLICATION_JSON);
+        if (downstream.getHeaders().getLocation() != null) {
+            builder.location(downstream.getHeaders().getLocation());
+        }
+        return builder.body(downstream.getBody());
     }
 
     private JsonNode getBodyWithAuth(RestClient client, String uri, String authHeader) {

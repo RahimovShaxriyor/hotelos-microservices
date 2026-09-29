@@ -7,5 +7,10 @@ public record RoomServiceChargePayload(
         String orderId,
         String roomNumber,
         BigDecimal amount,
+        String currency,
         Instant chargedAt
-) {}
+) {
+    public RoomServiceChargePayload(String orderId, String roomNumber, BigDecimal amount, Instant chargedAt) {
+        this(orderId, roomNumber, amount, "UZS", chargedAt);
+    }
+}

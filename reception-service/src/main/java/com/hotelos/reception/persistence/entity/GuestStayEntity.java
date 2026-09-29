@@ -15,11 +15,17 @@ public class GuestStayEntity {
     @Column(name = "id", nullable = false)
     private UUID id;
 
+    @Column(name = "guest_id", nullable = false)
+    private UUID guestId;
+
     @Column(name = "room_number", length = 16, nullable = false)
     private String roomNumber;
 
     @Column(name = "guest_name", length = 128, nullable = false)
     private String guestName;
+
+    @Column(name = "currency", length = 3, nullable = false)
+    private String currency = "UZS";
 
     @Column(name = "check_in_date", nullable = false)
     private LocalDate checkInDate;
@@ -54,11 +60,13 @@ public class GuestStayEntity {
     public GuestStayEntity() {
     }
 
-    public GuestStayEntity(UUID id, String roomNumber, String guestName, LocalDate checkInDate, int bookedNights,
-                           BigDecimal nightlyRateAtCheckin, Instant checkedInAt) {
+    public GuestStayEntity(UUID id, UUID guestId, String roomNumber, String guestName, String currency,
+                           LocalDate checkInDate, int bookedNights, BigDecimal nightlyRateAtCheckin, Instant checkedInAt) {
         this.id = id != null ? id : UUID.randomUUID();
+        this.guestId = guestId;
         this.roomNumber = roomNumber;
         this.guestName = guestName;
+        this.currency = currency != null ? currency : "UZS";
         this.checkInDate = checkInDate != null ? checkInDate : LocalDate.now();
         this.bookedNights = bookedNights;
         this.nightlyRateAtCheckin = nightlyRateAtCheckin;
@@ -78,6 +86,9 @@ public class GuestStayEntity {
         if (this.createdAt == null) {
             this.createdAt = Instant.now();
         }
+        if (this.currency == null) {
+            this.currency = "UZS";
+        }
         if (this.minibarCharge == null) this.minibarCharge = BigDecimal.ZERO;
         if (this.lateCheckoutFee == null) this.lateCheckoutFee = BigDecimal.ZERO;
         if (this.discount == null) this.discount = BigDecimal.ZERO;
@@ -86,11 +97,17 @@ public class GuestStayEntity {
     public UUID getId() { return id; }
     public void setId(UUID id) { this.id = id; }
 
+    public UUID getGuestId() { return guestId; }
+    public void setGuestId(UUID guestId) { this.guestId = guestId; }
+
     public String getRoomNumber() { return roomNumber; }
     public void setRoomNumber(String roomNumber) { this.roomNumber = roomNumber; }
 
     public String getGuestName() { return guestName; }
     public void setGuestName(String guestName) { this.guestName = guestName; }
+
+    public String getCurrency() { return currency; }
+    public void setCurrency(String currency) { this.currency = currency; }
 
     public LocalDate getCheckInDate() { return checkInDate; }
     public void setCheckInDate(LocalDate checkInDate) { this.checkInDate = checkInDate; }

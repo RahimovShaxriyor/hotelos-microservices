@@ -22,8 +22,8 @@ public interface RoomServiceChargeRepository extends JpaRepository<RoomServiceCh
 
     @Modifying
     @Query(value = """
-        INSERT INTO reception.room_service_charges (id, order_id, stay_id, amount, source_event_id, charged_at, created_at)
-        VALUES (:id, :orderId, :stayId, :amount, :sourceEventId, :chargedAt, CURRENT_TIMESTAMP)
+        INSERT INTO reception.room_service_charges (id, order_id, stay_id, amount, currency, source_event_id, charged_at, created_at)
+        VALUES (:id, :orderId, :stayId, :amount, :currency, :sourceEventId, :chargedAt, CURRENT_TIMESTAMP)
         ON CONFLICT (order_id) DO NOTHING
         """, nativeQuery = true)
     int insertChargeOnConflictDoNothing(
@@ -31,6 +31,7 @@ public interface RoomServiceChargeRepository extends JpaRepository<RoomServiceCh
             @Param("orderId") String orderId,
             @Param("stayId") UUID stayId,
             @Param("amount") BigDecimal amount,
+            @Param("currency") String currency,
             @Param("sourceEventId") UUID sourceEventId,
             @Param("chargedAt") Instant chargedAt
     );

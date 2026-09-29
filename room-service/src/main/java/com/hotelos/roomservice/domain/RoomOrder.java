@@ -12,18 +12,24 @@ public class RoomOrder {
     private final String roomNumber;
     private final List<OrderItem> items;
     private OrderStatus status;
+    private final String currency;
     private final Instant createdAt;
     private Instant updatedAt;
 
     public RoomOrder(String roomNumber, List<OrderItem> items) {
-        this(UUID.randomUUID().toString(), roomNumber, items, OrderStatus.RECEIVED, Instant.now(), Instant.now());
+        this(UUID.randomUUID().toString(), roomNumber, items, OrderStatus.RECEIVED, "UZS", Instant.now(), Instant.now());
     }
 
     public RoomOrder(String orderId, String roomNumber, List<OrderItem> items, OrderStatus status, Instant createdAt, Instant updatedAt) {
+        this(orderId, roomNumber, items, status, "UZS", createdAt, updatedAt);
+    }
+
+    public RoomOrder(String orderId, String roomNumber, List<OrderItem> items, OrderStatus status, String currency, Instant createdAt, Instant updatedAt) {
         this.orderId = orderId;
         this.roomNumber = roomNumber;
         this.items = items;
         this.status = status;
+        this.currency = (currency != null && !currency.isBlank()) ? currency : "UZS";
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
     }
@@ -32,6 +38,7 @@ public class RoomOrder {
     public String getRoomNumber() { return roomNumber; }
     public List<OrderItem> getItems() { return items; }
     public OrderStatus getStatus() { return status; }
+    public String getCurrency() { return currency; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
 

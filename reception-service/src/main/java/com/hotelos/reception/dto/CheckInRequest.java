@@ -1,12 +1,17 @@
 package com.hotelos.reception.dto;
 
+import java.util.UUID;
+
 public class CheckInRequest {
+    private UUID guestId;
     private String guestName;
     private String roomType;
     private int nights;
     private Integer preferredFloor;
     private String proximityPreference;
 
+    public UUID getGuestId() { return guestId; }
+    public void setGuestId(UUID guestId) { this.guestId = guestId; }
     public String getGuestName() { return guestName; }
     public void setGuestName(String guestName) { this.guestName = guestName; }
     public String getRoomType() { return roomType; }

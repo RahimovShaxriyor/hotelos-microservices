@@ -31,6 +31,9 @@ public class RoomEntity {
     @Column(name = "nightly_rate", precision = 19, scale = 2, nullable = false)
     private BigDecimal nightlyRate;
 
+    @Column(name = "currency", length = 3, nullable = false)
+    private String currency = "UZS";
+
     @Enumerated(EnumType.STRING)
     @Column(name = "occupancy_status", length = 32, nullable = false)
     private OccupancyStatus occupancyStatus;
@@ -96,6 +99,9 @@ public class RoomEntity {
 
     public BigDecimal getNightlyRate() { return nightlyRate; }
     public void setNightlyRate(BigDecimal nightlyRate) { this.nightlyRate = nightlyRate; }
+
+    public String getCurrency() { return currency; }
+    public void setCurrency(String currency) { this.currency = currency; }
 
     public OccupancyStatus getOccupancyStatus() { return occupancyStatus; }
     public void setOccupancyStatus(OccupancyStatus occupancyStatus) { this.occupancyStatus = occupancyStatus; }
