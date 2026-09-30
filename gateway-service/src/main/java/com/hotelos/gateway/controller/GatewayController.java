@@ -1,6 +1,7 @@
 package com.hotelos.gateway.controller;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import java.net.URI;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -239,6 +240,90 @@ public class GatewayController {
     @PutMapping(value = "/api/reception/guest-profiles/{id}", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<JsonNode> updateGuestProfile(@PathVariable UUID id, @RequestBody UpdateGuestRequest request) {
         return put(receptionClient, "/api/reception/guest-profiles/" + id, request);
+    }
+
+    @Operation(summary = "Create confirmed reservation", tags = {"Reception"})
+    @PostMapping(value = "/api/reception/reservations", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<JsonNode> createReservation(
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            @RequestBody JsonNode request
+    ) {
+        return postWithHeader(receptionClient, "/api/reception/reservations", request, "Idempotency-Key", idempotencyKey);
+    }
+
+    @Operation(summary = "List reservations", tags = {"Reception"})
+    @GetMapping("/api/reception/reservations")
+    public ResponseEntity<JsonNode> listReservations(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) UUID guestId,
+            @RequestParam(required = false) String roomType,
+            @RequestParam(required = false) String arrivalFrom,
+            @RequestParam(required = false) String arrivalTo,
+            @RequestParam(required = false) String departureFrom,
+            @RequestParam(required = false) String departureTo,
+            @RequestParam(required = false) String assignedRoomNumber
+    ) {
+        UriComponentsBuilder builder = UriComponentsBuilder.fromPath("/api/reception/reservations")
+                .queryParam("page", page)
+                .queryParam("size", size);
+        addQueryParam(builder, "sort", sort);
+        addQueryParam(builder, "status", status);
+        if (guestId != null) builder.queryParam("guestId", guestId);
+        addQueryParam(builder, "roomType", roomType);
+        addQueryParam(builder, "arrivalFrom", arrivalFrom);
+        addQueryParam(builder, "arrivalTo", arrivalTo);
+        addQueryParam(builder, "departureFrom", departureFrom);
+        addQueryParam(builder, "departureTo", departureTo);
+        addQueryParam(builder, "assignedRoomNumber", assignedRoomNumber);
+        return get(receptionClient, builder.toUriString());
+    }
+
+    @Operation(summary = "Get reservation availability", tags = {"Reception"})
+    @GetMapping("/api/reception/reservations/availability")
+    public ResponseEntity<JsonNode> reservationAvailability(
+            @RequestParam String roomType,
+            @RequestParam String arrivalDate,
+            @RequestParam String departureDate
+    ) {
+        String uri = UriComponentsBuilder.fromPath("/api/reception/reservations/availability")
+                .queryParam("roomType", roomType)
+                .queryParam("arrivalDate", arrivalDate)
+                .queryParam("departureDate", departureDate)
+                .toUriString();
+        return get(receptionClient, uri);
+    }
+
+    @Operation(summary = "Get reservation by ID", tags = {"Reception"})
+    @GetMapping("/api/reception/reservations/{id}")
+    public ResponseEntity<JsonNode> getReservation(@PathVariable UUID id) {
+        return get(receptionClient, "/api/reception/reservations/" + id);
+    }
+
+    @Operation(summary = "Update mutable reservation fields", tags = {"Reception"})
+    @PatchMapping(value = "/api/reception/reservations/{id}", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<JsonNode> patchReservation(@PathVariable UUID id, @RequestBody JsonNode request) {
+        return patch(receptionClient, "/api/reception/reservations/" + id, request);
+    }
+
+    @Operation(summary = "Cancel reservation", tags = {"Reception"})
+    @PostMapping("/api/reception/reservations/{id}/cancel")
+    public ResponseEntity<JsonNode> cancelReservation(@PathVariable UUID id) {
+        return post(receptionClient, "/api/reception/reservations/" + id + "/cancel", null);
+    }
+
+    @Operation(summary = "Mark reservation no-show", tags = {"Reception"})
+    @PostMapping("/api/reception/reservations/{id}/no-show")
+    public ResponseEntity<JsonNode> noShowReservation(@PathVariable UUID id) {
+        return post(receptionClient, "/api/reception/reservations/" + id + "/no-show", null);
+    }
+
+    @Operation(summary = "Assign or change reservation room", tags = {"Reception"})
+    @PostMapping(value = "/api/reception/reservations/{id}/assign-room", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<JsonNode> assignReservationRoom(@PathVariable UUID id, @RequestBody JsonNode request) {
+        return post(receptionClient, "/api/reception/reservations/" + id + "/assign-room", request);
     }
 
     // -------------------------------------------------------------------------
@@ -581,6 +666,26 @@ public class GatewayController {
         return cleanGatewayResponse(downstream);
     }
 
+    private ResponseEntity<JsonNode> postWithHeader(RestClient client, String uri, Object body,
+                                                    String headerName, String headerValue) {
+        RestClient.RequestBodySpec request = client.post().uri(uri);
+        if (headerValue != null) {
+            request.header(headerName, headerValue);
+        }
+        ResponseEntity<JsonNode> downstream = request
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(body)
+                .retrieve()
+                .toEntity(JsonNode.class);
+        return cleanGatewayResponse(downstream);
+    }
+
+    private void addQueryParam(UriComponentsBuilder builder, String name, String value) {
+        if (value != null && !value.isBlank()) {
+            builder.queryParam(name, value);
+        }
+    }
+
     private ResponseEntity<JsonNode> put(RestClient client, String uri, Object body) {
         RestClient.RequestBodySpec request = client.put().uri(uri);
         ResponseEntity<JsonNode> downstream;
@@ -623,10 +728,25 @@ public class GatewayController {
         ResponseEntity.BodyBuilder builder = ResponseEntity
                 .status(downstream.getStatusCode())
                 .contentType(MediaType.APPLICATION_JSON);
-        if (downstream.getHeaders().getLocation() != null) {
-            builder.location(downstream.getHeaders().getLocation());
+        URI location = downstream.getHeaders().getLocation();
+        if (location != null) {
+            builder.location(sanitizeLocation(location));
         }
         return builder.body(downstream.getBody());
+    }
+
+    private URI sanitizeLocation(URI location) {
+        if (location == null) {
+            return null;
+        }
+        String path = location.getRawPath();
+        if (path == null || path.isBlank()) {
+            return location;
+        }
+        if (location.getRawQuery() != null && !location.getRawQuery().isBlank()) {
+            path += "?" + location.getRawQuery();
+        }
+        return URI.create(path);
     }
 
     private JsonNode getBodyWithAuth(RestClient client, String uri, String authHeader) {

@@ -15,6 +15,7 @@ import com.hotelos.reception.dto.CheckInRequest;
 import com.hotelos.reception.dto.CheckInResponse;
 import com.hotelos.reception.dto.CheckOutResponse;
 import com.hotelos.reception.exception.HotelValidationException;
+import com.hotelos.reception.exception.ConflictException;
 import com.hotelos.reception.exception.ResourceNotFoundException;
 import com.hotelos.reception.inbox.ReceptionInboxService;
 import com.hotelos.reception.outbox.ReceptionOutboxService;
@@ -26,6 +27,7 @@ import com.hotelos.reception.persistence.repository.GuestRepository;
 import com.hotelos.reception.persistence.repository.GuestStayRepository;
 import com.hotelos.reception.persistence.repository.ReceptionInboxRepository;
 import com.hotelos.reception.persistence.repository.ReceptionOutboxRepository;
+import com.hotelos.reception.persistence.repository.ReservationRepository;
 import com.hotelos.reception.persistence.repository.RoomRepository;
 import com.hotelos.reception.persistence.repository.RoomServiceChargeRepository;
 import org.slf4j.Logger;
@@ -39,6 +41,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.util.*;
 
@@ -50,6 +53,9 @@ public class RoomInventoryService {
     private final GuestStayRepository guestStayRepository;
     private final GuestRepository guestRepository;
     private final RoomServiceChargeRepository roomServiceChargeRepository;
+    private final ReservationRepository reservationRepository;
+    private final RoomInventoryAvailabilityService availabilityService;
+    private final Clock hotelClock;
     private final BillingService billingService;
     private final ReceptionOutboxService outboxService;
     private final ReceptionOutboxRepository outboxRepository;
@@ -61,6 +67,9 @@ public class RoomInventoryService {
             GuestStayRepository guestStayRepository,
             GuestRepository guestRepository,
             RoomServiceChargeRepository roomServiceChargeRepository,
+            ReservationRepository reservationRepository,
+            RoomInventoryAvailabilityService availabilityService,
+            Clock hotelClock,
             BillingService billingService,
             ReceptionOutboxService outboxService,
             ReceptionOutboxRepository outboxRepository,
@@ -71,6 +80,9 @@ public class RoomInventoryService {
         this.guestStayRepository = guestStayRepository;
         this.guestRepository = guestRepository;
         this.roomServiceChargeRepository = roomServiceChargeRepository;
+        this.reservationRepository = reservationRepository;
+        this.availabilityService = availabilityService;
+        this.hotelClock = hotelClock;
         this.billingService = billingService;
         this.outboxService = outboxService;
         this.outboxRepository = outboxRepository;
@@ -93,6 +105,7 @@ public class RoomInventoryService {
     @Transactional
     public Map<String, Object> resetAndSeed() {
         roomServiceChargeRepository.deleteAllInBatch();
+        reservationRepository.deleteAllInBatch();
         guestStayRepository.deleteAllInBatch();
         guestRepository.deleteAllInBatch();
         roomRepository.deleteAllInBatch();
@@ -146,14 +159,15 @@ public class RoomInventoryService {
 
     private void seedExistingGuests() {
         Instant now = Instant.now();
+        LocalDate hotelToday = LocalDate.now(hotelClock);
         GuestEntity guest1 = new GuestEntity(UUID.randomUUID(), "John", "Smith", "john.smith@example.com", "+1-555-0101", false, "Seeded demo guest");
         GuestEntity guest2 = new GuestEntity(UUID.randomUUID(), "Sara", "Lee", "sara.lee@example.com", "+1-555-0102", true, "Seeded demo VIP guest");
         guestRepository.saveAll(List.of(guest1, guest2));
 
         List<GuestStayEntity> stays = List.of(
-                new GuestStayEntity(UUID.randomUUID(), guest1.getId(), "204", "John Smith", "UZS", LocalDate.now(), 2,
+                new GuestStayEntity(UUID.randomUUID(), guest1.getId(), "204", "John Smith", "UZS", hotelToday, 2,
                         new BigDecimal("140.00"), now.minusSeconds(9000)),
-                new GuestStayEntity(UUID.randomUUID(), guest2.getId(), "301", "Sara Lee", "UZS", LocalDate.now(), 3,
+                new GuestStayEntity(UUID.randomUUID(), guest2.getId(), "301", "Sara Lee", "UZS", hotelToday, 3,
                         new BigDecimal("150.00"), now.minusSeconds(12000))
         );
         guestStayRepository.saveAll(stays);
@@ -246,6 +260,11 @@ public class RoomInventoryService {
         validateCheckIn(request);
         RoomType requestedType = parseRoomType(request.getRoomType());
 
+        LocalDate hotelToday = LocalDate.now(hotelClock);
+        LocalDate stayDepartureDate = hotelToday.plusDays(request.getNights());
+        availabilityService.lockRoomTypes(List.of(requestedType));
+        availabilityService.assertCapacity(requestedType, hotelToday, stayDepartureDate, hotelToday, null);
+
         UUID guestId;
         String guestName;
         if (request.getGuestId() != null) {
@@ -274,18 +293,22 @@ public class RoomInventoryService {
             guestName = fullName;
         }
 
-        // Row-level locking candidate selection: selects best candidate with FOR UPDATE SKIP LOCKED
-        Optional<RoomEntity> candidate = roomRepository.findAvailableRoomForUpdate(
-                requestedType.name(),
+        Optional<RoomEntity> candidate = availabilityService.findReadyRoomForWalkIn(
+                requestedType,
+                hotelToday,
+                stayDepartureDate,
                 request.getPreferredFloor(),
                 request.getProximityPreference()
         );
 
         if (candidate.isEmpty()) {
-            throw new HotelValidationException("No rooms available for requested type");
+            throw new ConflictException("NO_ROOM_READY", "Capacity exists, but no physical room is ready for check-in");
         }
 
         RoomEntity selected = candidate.get();
+        if (!selected.isSellable()) {
+            throw new ConflictException("NO_ROOM_READY", "Selected room is no longer ready for check-in");
+        }
         selected.occupy();
         roomRepository.save(selected);
 
@@ -295,7 +318,7 @@ public class RoomInventoryService {
                 selected.getRoomNumber(),
                 guestName,
                 selected.getCurrency(),
-                LocalDate.now(),
+                hotelToday,
                 request.getNights(),
                 selected.getNightlyRate(),
                 Instant.now()

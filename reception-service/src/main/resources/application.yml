@@ -37,6 +37,7 @@ spring:
     template:
       mandatory: true
 hotelos:
+  hotel-zone: ${HOTELOS_HOTEL_ZONE:Asia/Tashkent}
   outbox:
     poll-interval-ms: 500
     batch-size: 10

@@ -26,10 +26,7 @@ public class GuestProfileController {
     @PostMapping
     public ResponseEntity<GuestProfileResponse> createGuest(@Valid @RequestBody CreateGuestRequest request) {
         GuestProfileResponse response = guestProfileService.createGuest(request);
-        URI location = ServletUriComponentsBuilder.fromCurrentRequest()
-                .path("/{id}")
-                .buildAndExpand(response.id())
-                .toUri();
+        URI location = URI.create("/api/reception/guests/" + response.id());
         return ResponseEntity.created(location).body(response);
     }
 

@@ -6,6 +6,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
+import java.util.Objects;
 
 @Entity
 @Table(name = "guest_stays", schema = "reception")
@@ -67,7 +68,7 @@ public class GuestStayEntity {
         this.roomNumber = roomNumber;
         this.guestName = guestName;
         this.currency = currency != null ? currency : "UZS";
-        this.checkInDate = checkInDate != null ? checkInDate : LocalDate.now();
+        this.checkInDate = Objects.requireNonNull(checkInDate, "checkInDate is required");
         this.bookedNights = bookedNights;
         this.nightlyRateAtCheckin = nightlyRateAtCheckin;
         this.checkedInAt = checkedInAt != null ? checkedInAt : Instant.now();

@@ -12,6 +12,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -41,6 +42,37 @@ public interface RoomRepository extends JpaRepository<RoomEntity, String> {
         """, nativeQuery = true)
     Optional<RoomEntity> findAvailableRoomForUpdate(
             @Param("roomType") String roomType,
+            @Param("preferredFloor") Integer preferredFloor,
+            @Param("proximityPreference") String proximityPreference
+    );
+
+    @Query(value = """
+        SELECT r.* FROM reception.rooms r
+        WHERE r.occupancy_status = 'VACANT'
+          AND r.housekeeping_status = 'CLEAN'
+          AND r.engineering_status = 'OPERATIONAL'
+          AND r.turnover_pending = FALSE
+          AND r.room_type = :roomType
+          AND NOT EXISTS (
+              SELECT 1
+              FROM reception.reservations res
+              WHERE res.status = 'CONFIRMED'
+                AND res.assigned_room_number = r.room_number
+                AND res.arrival_date < :departureDate
+                AND res.departure_date > :arrivalDate
+          )
+        ORDER BY
+          CASE WHEN :preferredFloor IS NOT NULL AND r.floor = :preferredFloor THEN 0 ELSE 1 END ASC,
+          r.clean_since ASC,
+          CASE WHEN :proximityPreference IS NOT NULL AND UPPER(r.proximity) = UPPER(:proximityPreference) THEN 0 ELSE 1 END ASC,
+          r.room_number ASC
+        LIMIT 1
+        FOR UPDATE OF r SKIP LOCKED
+        """, nativeQuery = true)
+    Optional<RoomEntity> findReservationAwareAvailableRoomForUpdate(
+            @Param("roomType") String roomType,
+            @Param("arrivalDate") LocalDate arrivalDate,
+            @Param("departureDate") LocalDate departureDate,
             @Param("preferredFloor") Integer preferredFloor,
             @Param("proximityPreference") String proximityPreference
     );
