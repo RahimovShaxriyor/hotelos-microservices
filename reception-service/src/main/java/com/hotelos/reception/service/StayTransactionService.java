@@ -59,6 +59,7 @@ public class StayTransactionService {
     private final RoomInventoryAvailabilityService availabilityService;
     private final RoomServiceChargeRepository roomServiceChargeRepository;
     private final BillingService billingService;
+    private final FolioTransactionService folioTransactionService;
     private final ReceptionOutboxService outboxService;
     private final Clock hotelClock;
 
@@ -71,6 +72,7 @@ public class StayTransactionService {
             RoomInventoryAvailabilityService availabilityService,
             RoomServiceChargeRepository roomServiceChargeRepository,
             BillingService billingService,
+            FolioTransactionService folioTransactionService,
             ReceptionOutboxService outboxService,
             Clock hotelClock
     ) {
@@ -82,6 +84,7 @@ public class StayTransactionService {
         this.availabilityService = availabilityService;
         this.roomServiceChargeRepository = roomServiceChargeRepository;
         this.billingService = billingService;
+        this.folioTransactionService = folioTransactionService;
         this.outboxService = outboxService;
         this.hotelClock = hotelClock;
     }
@@ -100,6 +103,7 @@ public class StayTransactionService {
         if (reservation.getStatus() == ReservationStatus.CHECKED_IN) {
             GuestStayEntity existingStay = guestStayRepository.findByReservationId(reservationId)
                     .orElseThrow(() -> new IllegalStateException("Reservation marked CHECKED_IN but guest stay is missing"));
+            folioTransactionService.createInitialFolio(existingStay);
             List<StayRoomHistoryEntity> history = stayRoomHistoryRepository.findByStayIdOrderByStartedAtAsc(existingStay.getId());
             BigDecimal charges = roomServiceChargeRepository.sumChargesByStayId(existingStay.getId());
             BigDecimal total = billingService.calculateBill(existingStay, charges);
@@ -194,6 +198,9 @@ public class StayTransactionService {
         );
         stayRoomHistoryRepository.save(history);
 
+        // Level 6: Folio & Initial ROOM_CHARGE
+        folioTransactionService.createInitialFolio(stay);
+
         // Enqueue outbox event atomically
         EventEnvelope<RoomOccupancyChangedPayload> occupancyEvent = EventEnvelope.create(
                 EventTypes.ROOM_OCCUPANCY_CHANGED,
@@ -204,8 +211,9 @@ public class StayTransactionService {
         );
         outboxService.enqueue(occupancyEvent, MessagingConstants.HOTEL_EXCHANGE, RoutingKeys.ROOM_OCCUPANCY_CHANGED);
 
-        log.info("Checked in reservation {} into stay {} room {}", reservationId, stay.getId(), room.getRoomNumber());
-        return new StayCreationResult(StayResponse.from(stay, List.of(history), BigDecimal.ZERO, BigDecimal.ZERO), true);
+        BigDecimal total = billingService.calculateBill(stay, BigDecimal.ZERO);
+        log.info("Checked in reservation {} into stay {} room {}, total bill {}", reservationId, stay.getId(), room.getRoomNumber(), total);
+        return new StayCreationResult(StayResponse.from(stay, List.of(history), BigDecimal.ZERO, total), true);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW, isolation = Isolation.READ_COMMITTED)
@@ -260,6 +268,9 @@ public class StayTransactionService {
         int extraNights = (int) ChronoUnit.DAYS.between(currentDepartureDate, newDepartureDate);
         stay.setBookedNights(stay.getBookedNights() + extraNights);
         guestStayRepository.save(stay);
+
+        // Level 6: Record extension charge
+        folioTransactionService.recordExtensionCharge(stay.getId(), newDepartureDate, extraNights, stay.getNightlyRateAtCheckin(), Instant.now(hotelClock));
 
         List<StayRoomHistoryEntity> history = stayRoomHistoryRepository.findByStayIdOrderByStartedAtAsc(stayId);
         BigDecimal charges = roomServiceChargeRepository.sumChargesByStayId(stayId);
@@ -416,8 +427,6 @@ public class StayTransactionService {
         }
 
         Instant checkedOutAt = Instant.now(hotelClock);
-        stay.setCheckedOutAt(checkedOutAt);
-        guestStayRepository.save(stay);
 
         // Level 5: Close active history segment
         StayRoomHistoryEntity activeSegment = stayRoomHistoryRepository.findActiveSegmentForUpdate(stayId).orElse(null);
@@ -425,6 +434,19 @@ public class StayTransactionService {
             activeSegment.setEndedAt(checkedOutAt);
             stayRoomHistoryRepository.save(activeSegment);
         }
+
+        // Level 6: Early checkout credit & Close Folio
+        LocalDate hotelToday = LocalDate.now(hotelClock);
+        long daysBetween = ChronoUnit.DAYS.between(stay.getCheckInDate(), hotelToday);
+        int actualNights = (int) Math.max(1, daysBetween);
+        int unusedNights = stay.getBookedNights() - actualNights;
+        if (unusedNights > 0) {
+            folioTransactionService.recordEarlyCheckoutCredit(stay.getId(), unusedNights, stay.getNightlyRateAtCheckin(), checkedOutAt);
+        }
+        folioTransactionService.closeFolio(stay.getId(), checkedOutAt);
+
+        stay.setCheckedOutAt(checkedOutAt);
+        guestStayRepository.save(stay);
 
         String turnoverCorrelationId = UUID.randomUUID().toString();
         room.vacate(turnoverCorrelationId);

@@ -376,6 +376,46 @@ public class GatewayController {
         return post(receptionClient, "/api/reception/stays/" + stayId + "/check-out", null);
     }
 
+    @Operation(summary = "Get folio for guest stay", tags = {"Reception"})
+    @GetMapping("/api/reception/stays/{stayId}/folio")
+    public ResponseEntity<JsonNode> getFolioByStay(@PathVariable UUID stayId) {
+        return get(receptionClient, "/api/reception/stays/" + stayId + "/folio");
+    }
+
+    @Operation(summary = "Get folio by ID", tags = {"Reception"})
+    @GetMapping("/api/reception/folios/{folioId}")
+    public ResponseEntity<JsonNode> getFolio(@PathVariable UUID folioId) {
+        return get(receptionClient, "/api/reception/folios/" + folioId);
+    }
+
+    @Operation(summary = "List folio ledger entries", tags = {"Reception"})
+    @GetMapping("/api/reception/folios/{folioId}/entries")
+    public ResponseEntity<JsonNode> getFolioEntries(
+            @PathVariable UUID folioId,
+            @RequestParam(required = false) String entryType,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String sort
+    ) {
+        UriComponentsBuilder builder = UriComponentsBuilder.fromPath("/api/reception/folios/" + folioId + "/entries")
+                .queryParam("page", page)
+                .queryParam("size", size);
+        if (entryType != null) builder.queryParam("entryType", entryType);
+        if (sort != null) builder.queryParam("sort", sort);
+        return get(receptionClient, builder.build().toUriString());
+    }
+
+    @Operation(summary = "Create manual adjustment on folio", tags = {"Reception"})
+    @PostMapping(value = "/api/reception/folios/{folioId}/adjustments", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<JsonNode> createAdjustment(
+            @PathVariable UUID folioId,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            @RequestBody JsonNode request
+    ) {
+        return postWithHeader(receptionClient, "/api/reception/folios/" + folioId + "/adjustments", request,
+                "Idempotency-Key", idempotencyKey);
+    }
+
     // -------------------------------------------------------------------------
     // Housekeeping
     // -------------------------------------------------------------------------

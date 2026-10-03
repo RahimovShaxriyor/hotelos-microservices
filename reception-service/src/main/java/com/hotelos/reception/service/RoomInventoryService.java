@@ -23,6 +23,8 @@ import com.hotelos.reception.persistence.entity.GuestEntity;
 import com.hotelos.reception.persistence.entity.GuestStayEntity;
 import com.hotelos.reception.persistence.entity.RoomEntity;
 import com.hotelos.reception.persistence.entity.RoomServiceChargeEntity;
+import com.hotelos.reception.persistence.repository.FolioEntryRepository;
+import com.hotelos.reception.persistence.repository.FolioRepository;
 import com.hotelos.reception.persistence.repository.GuestRepository;
 import com.hotelos.reception.persistence.repository.GuestStayRepository;
 import com.hotelos.reception.persistence.repository.ReceptionInboxRepository;
@@ -64,6 +66,9 @@ public class RoomInventoryService {
     private final ReceptionInboxRepository inboxRepository;
     private final StayRoomHistoryRepository stayRoomHistoryRepository;
     private final StayService stayService;
+    private final FolioTransactionService folioTransactionService;
+    private final FolioRepository folioRepository;
+    private final FolioEntryRepository folioEntryRepository;
 
     public RoomInventoryService(
             RoomRepository roomRepository,
@@ -79,7 +84,10 @@ public class RoomInventoryService {
             ReceptionInboxService inboxService,
             ReceptionInboxRepository inboxRepository,
             StayRoomHistoryRepository stayRoomHistoryRepository,
-            StayService stayService
+            StayService stayService,
+            FolioTransactionService folioTransactionService,
+            FolioRepository folioRepository,
+            FolioEntryRepository folioEntryRepository
     ) {
         this.roomRepository = roomRepository;
         this.guestStayRepository = guestStayRepository;
@@ -95,6 +103,9 @@ public class RoomInventoryService {
         this.inboxRepository = inboxRepository;
         this.stayRoomHistoryRepository = stayRoomHistoryRepository;
         this.stayService = stayService;
+        this.folioTransactionService = folioTransactionService;
+        this.folioRepository = folioRepository;
+        this.folioEntryRepository = folioEntryRepository;
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -111,6 +122,8 @@ public class RoomInventoryService {
 
     @Transactional
     public Map<String, Object> resetAndSeed() {
+        folioEntryRepository.deleteAllInBatch();
+        folioRepository.deleteAllInBatch();
         roomServiceChargeRepository.deleteAllInBatch();
         stayRoomHistoryRepository.deleteAllInBatch();
         guestStayRepository.deleteAllInBatch();
@@ -184,6 +197,7 @@ public class RoomInventoryService {
             stayRoomHistoryRepository.save(new com.hotelos.reception.persistence.entity.StayRoomHistoryEntity(
                     UUID.randomUUID(), s.getId(), s.getRoomNumber(), s.getCheckedInAt(), null, "INITIAL_CHECKIN", s.getCheckedInAt()
             ));
+            folioTransactionService.createInitialFolio(s);
         }
     }
 
@@ -349,6 +363,9 @@ public class RoomInventoryService {
                 stay.getCheckedInAt()
         ));
 
+        // Create initial Folio and ROOM_CHARGE entry
+        folioTransactionService.createInitialFolio(stay);
+
         // Enqueue outbox event atomically within check-in transaction
         EventEnvelope<RoomOccupancyChangedPayload> occupancyEvent = EventEnvelope.create(
                 EventTypes.ROOM_OCCUPANCY_CHANGED,
@@ -438,7 +455,7 @@ public class RoomInventoryService {
     }
 
     @RabbitListener(queues = RabbitConfig.RECEPTION_CHARGE_QUEUE)
-    @Transactional(isolation = Isolation.READ_COMMITTED)
+    @Transactional
     public void onRoomServiceCharge(EventEnvelope<RoomServiceChargePayload> event) {
         ReceptionInboxService.InboxResult inboxResult = inboxService.registerEvent(event);
         if (inboxResult != ReceptionInboxService.InboxResult.PROCEED) {
@@ -452,62 +469,16 @@ public class RoomInventoryService {
             return;
         }
 
-        Instant chargeTime = payload.chargedAt() != null ? payload.chargedAt() : event.occurredAt();
-        if (chargeTime == null) {
-            chargeTime = Instant.now();
-        }
-
-        // Resolve historical stay active at the time the charge occurred (eliminating room reuse race)
-        List<GuestStayEntity> candidateStays = guestStayRepository.findStaysForRoomAtTime(payload.roomNumber(), chargeTime);
-        if (candidateStays.isEmpty()) {
-            log.warn("No historical guest stay found for room {} at charge timestamp {}. Charge NOT applied for order {}. orderId remains unconsumed.",
-                    payload.roomNumber(), chargeTime, orderId);
-            return;
-        }
-        if (candidateStays.size() > 1) {
-            log.error("Multiple overlapping stays found for room {} at charge timestamp {}. Data integrity error! Aborting charge for order {}.",
-                    payload.roomNumber(), chargeTime, orderId);
-            return;
-        }
-
-        GuestStayEntity stay = candidateStays.get(0);
-
-        // Lock stay row to serialize against concurrent checkout bill calculation
-        guestStayRepository.findByIdForUpdate(stay.getId());
-
-        String chargeCurrency = (payload.currency() != null && !payload.currency().isBlank())
-                ? payload.currency().trim()
-                : stay.getCurrency();
-
-        // Atomic PostgreSQL deduplication: INSERT ... ON CONFLICT (order_id) DO NOTHING
-        UUID chargeId = UUID.randomUUID();
-        int affected = roomServiceChargeRepository.insertChargeOnConflictDoNothing(
-                chargeId,
-                orderId,
-                stay.getId(),
-                payload.amount(),
-                chargeCurrency,
-                event.eventId(),
-                chargeTime
+        FolioTransactionService.ChargeResult result = folioTransactionService.processRoomServiceCharge(
+                payload, event.occurredAt(), event.eventId()
         );
-
-        if (affected == 1) {
-            log.info("Applied room service charge of {} for order {} to stay {} (room {})",
-                    payload.amount(), orderId, stay.getId(), payload.roomNumber());
-        } else {
-            // Conflict detected on unique order_id: fetch existing row to verify idempotency consistency
-            Optional<RoomServiceChargeEntity> existingOpt = roomServiceChargeRepository.findByOrderId(orderId);
-            if (existingOpt.isPresent()) {
-                RoomServiceChargeEntity existing = existingOpt.get();
-                if (existing.getStayId().equals(stay.getId()) && existing.getAmount().compareTo(payload.amount()) == 0) {
-                    log.info("Duplicate room service charge ignored for orderId: {}", orderId);
-                } else {
-                    log.error("Duplicate orderId {} received with conflicting payload (data inconsistency). Existing stay={}, amount={}; incoming stay={}, amount={}. Charge rejected.",
-                            orderId, existing.getStayId(), existing.getAmount(), stay.getId(), payload.amount());
-                }
-            } else {
-                log.info("Duplicate room service charge ignored for orderId: {}", orderId);
-            }
+        switch (result) {
+            case APPLIED -> log.info("Applied room service charge of {} for order {}", payload.amount(), orderId);
+            case DUPLICATE -> log.info("Duplicate room service charge ignored for orderId: {}", orderId);
+            case UNRESOLVED -> log.warn("UNRESOLVED_STAY_AT_TIMESTAMP for room {} at {}", payload.roomNumber(), payload.chargedAt());
+            case CURRENCY_MISMATCH -> log.warn("FOLIO_CURRENCY_MISMATCH for order {}", orderId);
+            case REJECTED_POST_CHECKOUT -> log.warn("REJECTED_POST_CHECKOUT for order {}", orderId);
+            case AMBIGUOUS_STAY_MATCH -> log.warn("AMBIGUOUS_STAY_MATCH for order {}", orderId);
         }
     }
 

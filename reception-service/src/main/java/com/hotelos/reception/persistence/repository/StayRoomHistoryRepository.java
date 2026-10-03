@@ -22,4 +22,10 @@ public interface StayRoomHistoryRepository extends JpaRepository<StayRoomHistory
     Optional<StayRoomHistoryEntity> findActiveSegmentForUpdate(@Param("stayId") UUID stayId);
 
     Optional<StayRoomHistoryEntity> findByStayIdAndEndedAtIsNull(UUID stayId);
+
+    @Query("SELECT h.stayId FROM StayRoomHistoryEntity h WHERE h.roomNumber = :roomNumber AND h.startedAt <= :chargeTime AND (h.endedAt IS NULL OR :chargeTime < h.endedAt)")
+    List<UUID> findStayIdsForRoomAtTime(
+            @Param("roomNumber") String roomNumber,
+            @Param("chargeTime") java.time.Instant chargeTime
+    );
 }
