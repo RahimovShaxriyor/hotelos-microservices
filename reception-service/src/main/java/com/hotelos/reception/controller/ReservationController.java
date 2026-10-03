@@ -22,10 +22,14 @@ import java.util.UUID;
 public class ReservationController {
     private final ReservationService reservationService;
     private final PatchReservationParser patchParser;
+    private final com.hotelos.reception.service.StayService stayService;
 
-    public ReservationController(ReservationService reservationService, PatchReservationParser patchParser) {
+    public ReservationController(ReservationService reservationService,
+                                 PatchReservationParser patchParser,
+                                 com.hotelos.reception.service.StayService stayService) {
         this.reservationService = reservationService;
         this.patchParser = patchParser;
+        this.stayService = stayService;
     }
 
     @PostMapping
@@ -93,5 +97,14 @@ public class ReservationController {
     public ResponseEntity<ReservationResponse> assignRoom(@PathVariable UUID id,
                                                           @Valid @RequestBody AssignRoomRequest request) {
         return ResponseEntity.ok(reservationService.assignRoom(id, request));
+    }
+
+    @PostMapping("/{id}/check-in")
+    public ResponseEntity<StayResponse> checkIn(@PathVariable UUID id) {
+        com.hotelos.reception.service.StayTransactionService.StayCreationResult result = stayService.checkInReservation(id);
+        URI location = URI.create("/api/reception/stays/" + result.response().id());
+        return result.created()
+                ? ResponseEntity.created(location).body(result.response())
+                : ResponseEntity.ok().location(location).body(result.response());
     }
 }

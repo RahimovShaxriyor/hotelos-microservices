@@ -12,6 +12,7 @@ import com.hotelos.reception.persistence.repository.GuestRepository;
 import com.hotelos.reception.persistence.repository.ReservationRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
@@ -70,14 +71,25 @@ public class ReservationTransactionService {
         return new CreationOutcome(reservationRepository.saveAndFlush(reservation), true);
     }
 
-    @Transactional(isolation = Isolation.READ_COMMITTED)
-    public ReservationEntity patch(UUID id, PatchReservationCommand command) {
+    @Transactional(propagation = Propagation.REQUIRES_NEW, isolation = Isolation.READ_COMMITTED)
+    public ReservationEntity patch(UUID id, PatchReservationCommand command, com.hotelos.reception.dto.ReservationRoutingSnapshot snapshot) {
+        RoomType requestedType = command.roomType().orElse(snapshot.roomType());
+        List<RoomType> sortedTypes = java.util.stream.Stream.of(snapshot.roomType(), requestedType)
+                .distinct()
+                .sorted(java.util.Comparator.comparing(Enum::name))
+                .toList();
+        // Level 1: RoomType Inventory Locks
+        availabilityService.lockRoomTypes(sortedTypes);
+
+        // Level 2: Reservation Lock
         ReservationEntity reservation = reservationRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Reservation not found: " + id));
         requireConfirmed(reservation);
 
-        RoomType requestedType = command.roomType().orElse(reservation.getRoomType());
-        availabilityService.lockRoomTypes(List.of(reservation.getRoomType(), requestedType));
+        if (reservation.getRoomType() != snapshot.roomType()
+                || !java.util.Objects.equals(reservation.getAssignedRoomNumber(), snapshot.assignedRoomNumber())) {
+            throw new com.hotelos.reception.exception.ConcurrentRoutingMismatchException("Reservation routing changed concurrently");
+        }
 
         LocalDate arrivalDate = command.arrivalDate().orElse(reservation.getArrivalDate());
         LocalDate departureDate = command.departureDate().orElse(reservation.getDepartureDate());
@@ -97,6 +109,7 @@ public class ReservationTransactionService {
         LocalDate today = LocalDate.now(hotelClock);
         availabilityService.assertCapacity(roomType, arrivalDate, departureDate, today, reservation.getId());
         if (assignedRoom != null) {
+            // Level 3: Room Lock
             availabilityService.lockAndValidateAssignedRoom(
                     assignedRoom, roomType, arrivalDate, departureDate, today, reservation.getId()
             );

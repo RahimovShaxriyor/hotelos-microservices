@@ -21,6 +21,7 @@ public record ReservationResponse(
         String currency,
         Instant cancelledAt,
         Instant noShowAt,
+        Instant checkedInAt,
         Instant createdAt,
         Instant updatedAt
 ) {
@@ -29,7 +30,7 @@ public record ReservationResponse(
                 entity.getId(), entity.getGuestId(), entity.getRoomType(), entity.getAssignedRoomNumber(),
                 entity.getArrivalDate(), entity.getDepartureDate(), entity.getStatus(),
                 entity.getNightlyRateSnapshot(), entity.getCurrency(), entity.getCancelledAt(),
-                entity.getNoShowAt(), entity.getCreatedAt(), entity.getUpdatedAt()
+                entity.getNoShowAt(), entity.getCheckedInAt(), entity.getCreatedAt(), entity.getUpdatedAt()
         );
     }
 }

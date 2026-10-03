@@ -19,6 +19,9 @@ public class GuestStayEntity {
     @Column(name = "guest_id", nullable = false)
     private UUID guestId;
 
+    @Column(name = "reservation_id")
+    private UUID reservationId;
+
     @Column(name = "room_number", length = 16, nullable = false)
     private String roomNumber;
 
@@ -100,6 +103,9 @@ public class GuestStayEntity {
 
     public UUID getGuestId() { return guestId; }
     public void setGuestId(UUID guestId) { this.guestId = guestId; }
+
+    public UUID getReservationId() { return reservationId; }
+    public void setReservationId(UUID reservationId) { this.reservationId = reservationId; }
 
     public String getRoomNumber() { return roomNumber; }
     public void setRoomNumber(String roomNumber) { this.roomNumber = roomNumber; }

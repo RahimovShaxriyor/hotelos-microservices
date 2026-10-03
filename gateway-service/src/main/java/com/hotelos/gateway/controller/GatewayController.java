@@ -326,6 +326,56 @@ public class GatewayController {
         return post(receptionClient, "/api/reception/reservations/" + id + "/assign-room", request);
     }
 
+    @Operation(summary = "Check in confirmed reservation", tags = {"Reception"})
+    @PostMapping("/api/reception/reservations/{id}/check-in")
+    public ResponseEntity<JsonNode> checkInReservation(@PathVariable UUID id) {
+        return post(receptionClient, "/api/reception/reservations/" + id + "/check-in", null);
+    }
+
+    @Operation(summary = "List guest stays", tags = {"Reception"})
+    @GetMapping("/api/reception/stays")
+    public ResponseEntity<JsonNode> listStays(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) Boolean activeOnly,
+            @RequestParam(required = false) UUID guestId,
+            @RequestParam(required = false) String roomNumber
+    ) {
+        UriComponentsBuilder builder = UriComponentsBuilder.fromPath("/api/reception/stays")
+                .queryParam("page", page)
+                .queryParam("size", size);
+        if (sort != null) builder.queryParam("sort", sort);
+        if (activeOnly != null) builder.queryParam("activeOnly", activeOnly);
+        if (guestId != null) builder.queryParam("guestId", guestId);
+        if (roomNumber != null) builder.queryParam("roomNumber", roomNumber);
+        return get(receptionClient, builder.build().toUriString());
+    }
+
+    @Operation(summary = "Get guest stay details", tags = {"Reception"})
+    @GetMapping("/api/reception/stays/{stayId}")
+    public ResponseEntity<JsonNode> getStay(@PathVariable UUID stayId) {
+        return get(receptionClient, "/api/reception/stays/" + stayId);
+    }
+
+    @Operation(summary = "Extend guest stay", tags = {"Reception"})
+    @PostMapping(value = "/api/reception/stays/{stayId}/extend", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<JsonNode> extendStay(@PathVariable UUID stayId, @RequestBody JsonNode request) {
+        return post(receptionClient, "/api/reception/stays/" + stayId + "/extend", request);
+    }
+
+    @Operation(summary = "Change room for guest stay", tags = {"Reception"})
+    @PostMapping(value = "/api/reception/stays/{stayId}/change-room", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<JsonNode> changeRoom(@PathVariable UUID stayId, @RequestBody JsonNode request) {
+        return post(receptionClient, "/api/reception/stays/" + stayId + "/change-room", request);
+    }
+
+    @Operation(summary = "Check out guest stay", tags = {"Reception"})
+    @PostMapping("/api/reception/stays/{stayId}/check-out")
+    public ResponseEntity<JsonNode> checkOutStay(@PathVariable UUID stayId) {
+        return post(receptionClient, "/api/reception/stays/" + stayId + "/check-out", null);
+    }
+
     // -------------------------------------------------------------------------
     // Housekeeping
     // -------------------------------------------------------------------------

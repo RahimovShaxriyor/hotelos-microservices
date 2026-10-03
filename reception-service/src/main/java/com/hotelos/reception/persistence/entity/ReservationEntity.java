@@ -57,6 +57,9 @@ public class ReservationEntity {
     @Column(name = "no_show_at")
     private Instant noShowAt;
 
+    @Column(name = "checked_in_at")
+    private Instant checkedInAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -114,6 +117,7 @@ public class ReservationEntity {
     public String getRequestFingerprint() { return requestFingerprint; }
     public Instant getCancelledAt() { return cancelledAt; }
     public Instant getNoShowAt() { return noShowAt; }
+    public Instant getCheckedInAt() { return checkedInAt; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
 
@@ -121,11 +125,20 @@ public class ReservationEntity {
         status = ReservationStatus.CANCELLED;
         cancelledAt = at;
         noShowAt = null;
+        checkedInAt = null;
     }
 
     public void markNoShow(Instant at) {
         status = ReservationStatus.NO_SHOW;
         noShowAt = at;
         cancelledAt = null;
+        checkedInAt = null;
+    }
+
+    public void markCheckedIn(Instant at) {
+        status = ReservationStatus.CHECKED_IN;
+        checkedInAt = at;
+        cancelledAt = null;
+        noShowAt = null;
     }
 }

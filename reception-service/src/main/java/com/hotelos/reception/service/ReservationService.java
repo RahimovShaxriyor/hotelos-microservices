@@ -103,7 +103,29 @@ public class ReservationService {
     }
 
     public ReservationResponse patch(UUID id, PatchReservationCommand command) {
-        return ReservationResponse.from(transactionService.patch(id, command));
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            ReservationEntity preliminary = reservationRepository.findById(id)
+                    .orElseThrow(() -> new ResourceNotFoundException("Reservation not found: " + id));
+            ReservationRoutingSnapshot snapshot = new ReservationRoutingSnapshot(
+                    preliminary.getId(), preliminary.getRoomType(), preliminary.getAssignedRoomNumber(),
+                    preliminary.getStatus(), preliminary.getArrivalDate(), preliminary.getDepartureDate()
+            );
+            try {
+                return ReservationResponse.from(transactionService.patch(id, command, snapshot));
+            } catch (com.hotelos.reception.exception.ConcurrentRoutingMismatchException ex) {
+                if (attempt == 3) {
+                    throw new ConflictException("CONCURRENT_STATE_CHANGE",
+                            "Reservation routing was modified concurrently. Please retry operation.");
+                }
+                try {
+                    Thread.sleep(attempt * 25L);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("Interrupted during patch retry", ie);
+                }
+            }
+        }
+        throw new ConflictException("CONCURRENT_STATE_CHANGE", "Max patch retries exceeded");
     }
 
     public ReservationResponse assignRoom(UUID id, AssignRoomRequest request) {

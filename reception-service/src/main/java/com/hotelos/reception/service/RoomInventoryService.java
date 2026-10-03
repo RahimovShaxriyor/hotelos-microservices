@@ -30,6 +30,7 @@ import com.hotelos.reception.persistence.repository.ReceptionOutboxRepository;
 import com.hotelos.reception.persistence.repository.ReservationRepository;
 import com.hotelos.reception.persistence.repository.RoomRepository;
 import com.hotelos.reception.persistence.repository.RoomServiceChargeRepository;
+import com.hotelos.reception.persistence.repository.StayRoomHistoryRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
@@ -61,6 +62,8 @@ public class RoomInventoryService {
     private final ReceptionOutboxRepository outboxRepository;
     private final ReceptionInboxService inboxService;
     private final ReceptionInboxRepository inboxRepository;
+    private final StayRoomHistoryRepository stayRoomHistoryRepository;
+    private final StayService stayService;
 
     public RoomInventoryService(
             RoomRepository roomRepository,
@@ -74,7 +77,9 @@ public class RoomInventoryService {
             ReceptionOutboxService outboxService,
             ReceptionOutboxRepository outboxRepository,
             ReceptionInboxService inboxService,
-            ReceptionInboxRepository inboxRepository
+            ReceptionInboxRepository inboxRepository,
+            StayRoomHistoryRepository stayRoomHistoryRepository,
+            StayService stayService
     ) {
         this.roomRepository = roomRepository;
         this.guestStayRepository = guestStayRepository;
@@ -88,6 +93,8 @@ public class RoomInventoryService {
         this.outboxRepository = outboxRepository;
         this.inboxService = inboxService;
         this.inboxRepository = inboxRepository;
+        this.stayRoomHistoryRepository = stayRoomHistoryRepository;
+        this.stayService = stayService;
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -105,8 +112,9 @@ public class RoomInventoryService {
     @Transactional
     public Map<String, Object> resetAndSeed() {
         roomServiceChargeRepository.deleteAllInBatch();
-        reservationRepository.deleteAllInBatch();
+        stayRoomHistoryRepository.deleteAllInBatch();
         guestStayRepository.deleteAllInBatch();
+        reservationRepository.deleteAllInBatch();
         guestRepository.deleteAllInBatch();
         roomRepository.deleteAllInBatch();
         inboxRepository.deleteAllInBatch();
@@ -171,6 +179,12 @@ public class RoomInventoryService {
                         new BigDecimal("150.00"), now.minusSeconds(12000))
         );
         guestStayRepository.saveAll(stays);
+
+        for (GuestStayEntity s : stays) {
+            stayRoomHistoryRepository.save(new com.hotelos.reception.persistence.entity.StayRoomHistoryEntity(
+                    UUID.randomUUID(), s.getId(), s.getRoomNumber(), s.getCheckedInAt(), null, "INITIAL_CHECKIN", s.getCheckedInAt()
+            ));
+        }
     }
 
     @Transactional(readOnly = true)
@@ -325,6 +339,16 @@ public class RoomInventoryService {
         );
         guestStayRepository.save(stay);
 
+        stayRoomHistoryRepository.save(new com.hotelos.reception.persistence.entity.StayRoomHistoryEntity(
+                UUID.randomUUID(),
+                stay.getId(),
+                selected.getRoomNumber(),
+                stay.getCheckedInAt(),
+                null,
+                "INITIAL_CHECKIN",
+                stay.getCheckedInAt()
+        ));
+
         // Enqueue outbox event atomically within check-in transaction
         EventEnvelope<RoomOccupancyChangedPayload> occupancyEvent = EventEnvelope.create(
                 EventTypes.ROOM_OCCUPANCY_CHANGED,
@@ -349,53 +373,11 @@ public class RoomInventoryService {
         );
     }
 
-    @Transactional(isolation = Isolation.READ_COMMITTED)
     public CheckOutResponse checkOut(String roomNumber) {
         validateKnownRoom(roomNumber);
-
-        // Lock hierarchy: 1. RoomEntity, 2. GuestStayEntity
-        RoomEntity room = roomRepository.findByRoomNumberForUpdate(roomNumber)
-                .orElseThrow(() -> new HotelValidationException("Invalid room number: " + roomNumber));
-
-        GuestStayEntity stay = guestStayRepository.findActiveStayForUpdate(roomNumber)
+        GuestStayEntity stay = guestStayRepository.findByRoomNumberAndCheckedOutAtIsNull(roomNumber)
                 .orElseThrow(() -> new HotelValidationException("No active guest stay for room " + roomNumber));
-
-        BigDecimal rsCharges = roomServiceChargeRepository.sumChargesByStayId(stay.getId());
-        BigDecimal total = billingService.calculateBill(stay, rsCharges);
-
-        stay.setCheckedOutAt(Instant.now());
-        guestStayRepository.save(stay);
-
-        // Check-out business operation correlation ID shared by related events and turnover lifecycle
-        String correlationId = UUID.randomUUID().toString();
-
-        // Atomically vacate occupancy and arm turnoverPending with this turnover correlation ID
-        room.vacate(correlationId);
-        roomRepository.save(room);
-
-        Instant now = Instant.now();
-        // Enqueue occupancy changed (VACANT) and room vacated events atomically within checkout transaction
-        EventEnvelope<RoomOccupancyChangedPayload> occupancyEvent = EventEnvelope.create(
-                EventTypes.ROOM_OCCUPANCY_CHANGED,
-                "reception-service",
-                roomNumber,
-                correlationId,
-                new RoomOccupancyChangedPayload(roomNumber, OccupancyStatus.VACANT.name(), now)
-        );
-        outboxService.enqueue(occupancyEvent, MessagingConstants.HOTEL_EXCHANGE, RoutingKeys.ROOM_OCCUPANCY_CHANGED);
-
-        EventEnvelope<RoomVacatedPayload> vacatedEvent = EventEnvelope.create(
-                EventTypes.ROOM_VACATED,
-                "reception-service",
-                roomNumber,
-                correlationId,
-                new RoomVacatedPayload(roomNumber, now)
-        );
-        outboxService.enqueue(vacatedEvent, MessagingConstants.HOTEL_EXCHANGE, RoutingKeys.ROOM_VACATED);
-
-        log.info("Checkout committed for room {} (stay {}), bill total {}", roomNumber, stay.getId(), total);
-
-        return new CheckOutResponse(roomNumber, stay.getGuestName(), total, stay.getCurrency(), "Guest checked out and room vacated event published");
+        return stayService.checkOutStay(stay.getId());
     }
 
     @RabbitListener(queues = RabbitConfig.RECEPTION_HOUSEKEEPING_STATUS_QUEUE)

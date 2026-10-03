@@ -197,6 +197,26 @@ public class RoomInventoryAvailabilityService {
         );
     }
 
+    public boolean hasConflictingConfirmedReservation(String roomNumber, LocalDate fromDate, LocalDate toDate,
+                                                      UUID excludedReservationId) {
+        MapSqlParameterSource parameters = new MapSqlParameterSource()
+                .addValue("roomNumber", roomNumber)
+                .addValue("fromDate", fromDate)
+                .addValue("toDate", toDate)
+                .addValue("excludedReservationId", excludedReservationId == null ? NO_EXCLUDED_RESERVATION : excludedReservationId);
+        Boolean conflict = jdbcTemplate.queryForObject("""
+                SELECT EXISTS (
+                    SELECT 1 FROM reception.reservations r
+                    WHERE r.status = 'CONFIRMED'
+                      AND r.assigned_room_number = :roomNumber
+                      AND r.id <> CAST(:excludedReservationId AS uuid)
+                      AND r.arrival_date < :toDate
+                      AND r.departure_date > :fromDate
+                )
+                """, parameters, Boolean.class);
+        return Boolean.TRUE.equals(conflict);
+    }
+
     private MapSqlParameterSource overlapParameters(String roomNumber, LocalDate arrivalDate, LocalDate departureDate,
                                                      LocalDate hotelToday, UUID excludedReservationId) {
         return new MapSqlParameterSource()
