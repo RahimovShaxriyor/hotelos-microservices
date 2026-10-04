@@ -36,6 +36,10 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import com.hotelos.common.event.payload.RoomServiceChargePayloadV2;
+import com.hotelos.reception.dto.RoomServiceChargeItem;
+import org.springframework.beans.factory.annotation.Value;
+
 @Service
 public class FolioTransactionService {
     private static final Logger log = LoggerFactory.getLogger(FolioTransactionService.class);
@@ -45,19 +49,22 @@ public class FolioTransactionService {
     private final GuestStayRepository guestStayRepository;
     private final StayRoomHistoryRepository stayRoomHistoryRepository;
     private final RoomServiceChargeRepository roomServiceChargeRepository;
+    private final boolean strictBarrier;
 
     public FolioTransactionService(
             FolioRepository folioRepository,
             FolioEntryRepository folioEntryRepository,
             GuestStayRepository guestStayRepository,
             StayRoomHistoryRepository stayRoomHistoryRepository,
-            RoomServiceChargeRepository roomServiceChargeRepository
+            RoomServiceChargeRepository roomServiceChargeRepository,
+            @Value("${hotelos.reception.strict-room-service-barrier:${HOTELOS_RECEPTION_STRICT_ROOM_SERVICE_BARRIER:true}}") boolean strictBarrier
     ) {
         this.folioRepository = folioRepository;
         this.folioEntryRepository = folioEntryRepository;
         this.guestStayRepository = guestStayRepository;
         this.stayRoomHistoryRepository = stayRoomHistoryRepository;
         this.roomServiceChargeRepository = roomServiceChargeRepository;
+        this.strictBarrier = strictBarrier;
     }
 
     public enum ChargeResult {
@@ -200,6 +207,79 @@ public class FolioTransactionService {
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
+    public void reconcileRoomServiceCharges(UUID stayId, List<RoomServiceChargeItem> charges) {
+        if (charges == null || charges.isEmpty()) {
+            return;
+        }
+
+        FolioEntity folio = folioRepository.findByStayIdForUpdate(stayId)
+                .orElseThrow(() -> new ResourceNotFoundException("Folio not found for stay: " + stayId));
+
+        GuestStayEntity stay = guestStayRepository.findById(stayId)
+                .orElseThrow(() -> new ResourceNotFoundException("Stay not found: " + stayId));
+
+        for (RoomServiceChargeItem charge : charges) {
+            String orderId = charge.orderId();
+            if (orderId == null || orderId.isBlank()) {
+                continue;
+            }
+
+            if (folioEntryRepository.findBySourceTypeAndSourceId(FolioSourceType.ROOM_SERVICE_ORDER, orderId).isPresent()) {
+                continue;
+            }
+
+            String chargeCurrency = (charge.currency() != null && !charge.currency().isBlank())
+                    ? charge.currency().trim().toUpperCase()
+                    : stay.getCurrency();
+
+            if (!folio.getCurrency().equalsIgnoreCase(chargeCurrency)) {
+                log.warn("FOLIO_CURRENCY_MISMATCH during reconciliation for stay {}, order {}: folio {}, charge {}",
+                        stayId, orderId, folio.getCurrency(), chargeCurrency);
+                throw new ConflictException("FOLIO_CURRENCY_MISMATCH",
+                        "Charge currency " + chargeCurrency + " does not match folio currency " + folio.getCurrency());
+            }
+
+            Instant chargeTime = charge.chargedAt() != null ? charge.chargedAt() : Instant.now();
+            BigDecimal amount = charge.amount().setScale(2, RoundingMode.HALF_UP);
+
+            FolioEntryEntity entry = new FolioEntryEntity(
+                    UUID.randomUUID(),
+                    folio.getId(),
+                    folio.getCurrency(),
+                    FolioEntryType.ROOM_SERVICE,
+                    FolioSourceType.ROOM_SERVICE_ORDER,
+                    orderId,
+                    amount,
+                    "Room service order " + orderId,
+                    null,
+                    "SYSTEM",
+                    chargeTime,
+                    Instant.now()
+            );
+
+            try {
+                folioEntryRepository.saveAndFlush(entry);
+            } catch (DataIntegrityViolationException ex) {
+                log.info("Concurrent insert caught during reconciliation for orderId: {}", orderId);
+            }
+
+            try {
+                roomServiceChargeRepository.insertChargeOnConflictDoNothing(
+                        UUID.randomUUID(),
+                        orderId,
+                        stay.getId(),
+                        amount,
+                        chargeCurrency,
+                        UUID.randomUUID(),
+                        chargeTime
+                );
+            } catch (Exception ex) {
+                log.warn("Compatibility insert into room_service_charges skipped/failed during reconciliation: {}", ex.getMessage());
+            }
+        }
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
     public FolioEntity closeFolio(UUID stayId, Instant checkoutTime) {
         FolioEntity folio = folioRepository.findByStayIdForUpdate(stayId)
                 .orElseThrow(() -> new ResourceNotFoundException("Folio not found for stay: " + stayId));
@@ -264,6 +344,13 @@ public class FolioTransactionService {
 
         // Check closed folio semantics & late charge boundaries
         if (folio.isClosed()) {
+            if (folioEntryRepository.findBySourceTypeAndSourceId(FolioSourceType.ROOM_SERVICE_ORDER, orderId).isPresent()) {
+                return ChargeResult.DUPLICATE;
+            }
+            if (strictBarrier) {
+                log.warn("REJECT_FINALIZED_FOLIO: CLOSED folio {} rejected unexpected V1 charge for order {}", folio.getId(), orderId);
+                return ChargeResult.REJECTED_POST_CHECKOUT;
+            }
             Instant checkoutTime = stay.getCheckedOutAt();
             if (checkoutTime != null && !chargeTime.isBefore(checkoutTime)) {
                 // chargedAt >= checkedOutAt: including exact boundary chargedAt == checkedOutAt
@@ -319,6 +406,120 @@ public class FolioTransactionService {
 
         log.info("Applied room service charge of {} {} for order {} to folio {}",
                 payload.amount(), chargeCurrency, orderId, folio.getId());
+        return ChargeResult.APPLIED;
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW, isolation = Isolation.READ_COMMITTED)
+    public ChargeResult processRoomServiceChargeV2(RoomServiceChargePayloadV2 payload, Instant eventOccurredAt, UUID eventId) {
+        String orderId = payload.orderId();
+        if (orderId == null || orderId.isBlank() || payload.stayId() == null) {
+            log.warn("Received room service charge V2 missing orderId or stayId: {}", payload);
+            return ChargeResult.UNRESOLVED;
+        }
+
+        Instant chargeTime = payload.chargedAt() != null ? payload.chargedAt() : eventOccurredAt;
+        if (chargeTime == null) {
+            chargeTime = Instant.now();
+        }
+
+        // Global deduplication check for room service order
+        if (folioEntryRepository.findBySourceTypeAndSourceId(FolioSourceType.ROOM_SERVICE_ORDER, orderId).isPresent()) {
+            log.info("Room service order {} already ingested, skipping duplicate V2", orderId);
+            return ChargeResult.DUPLICATE;
+        }
+
+        UUID stayId = payload.stayId();
+        Optional<GuestStayEntity> stayOpt = guestStayRepository.findByIdForUpdate(stayId);
+        if (stayOpt.isEmpty()) {
+            log.warn("UNRESOLVED_STAY: Stay {} not found for V2 charge order {}", stayId, orderId);
+            return ChargeResult.UNRESOLVED;
+        }
+        GuestStayEntity stay = stayOpt.get();
+
+        if (payload.roomNumber() != null && !payload.roomNumber().equalsIgnoreCase(stay.getRoomNumber())) {
+            log.info("HISTORICAL_ROOM_MISMATCH: Order {} was created for historical room {} but stay {} is currently in room {}",
+                    orderId, payload.roomNumber(), stayId, stay.getRoomNumber());
+        }
+
+        Optional<FolioEntity> folioOpt = folioRepository.findByStayIdForUpdate(stayId);
+        if (folioOpt.isEmpty()) {
+            log.warn("UNRESOLVED_FOLIO: Folio not found for stay {} V2 charge order {}", stayId, orderId);
+            return ChargeResult.UNRESOLVED;
+        }
+        FolioEntity folio = folioOpt.get();
+
+        String chargeCurrency = (payload.currency() != null && !payload.currency().isBlank())
+                ? payload.currency().trim().toUpperCase()
+                : stay.getCurrency();
+
+        if (!folio.getCurrency().equalsIgnoreCase(chargeCurrency)) {
+            log.warn("FOLIO_CURRENCY_MISMATCH: Folio currency {} does not match V2 charge currency {}",
+                    folio.getCurrency(), chargeCurrency);
+            return ChargeResult.CURRENCY_MISMATCH;
+        }
+
+        // Closed folio semantics:
+        if (folio.isClosed()) {
+            if (folioEntryRepository.findBySourceTypeAndSourceId(FolioSourceType.ROOM_SERVICE_ORDER, orderId).isPresent()) {
+                return ChargeResult.DUPLICATE;
+            }
+            if (strictBarrier) {
+                log.warn("REJECT_FINALIZED_FOLIO: CLOSED folio {} rejected V2 charge for order {}", folio.getId(), orderId);
+                return ChargeResult.REJECTED_POST_CHECKOUT;
+            } else {
+                Instant checkoutTime = stay.getCheckedOutAt();
+                if (checkoutTime != null && !chargeTime.isBefore(checkoutTime)) {
+                    log.warn("REJECTED_POST_CHECKOUT: Order {} charged at {} is on/after checkout time {}",
+                            orderId, chargeTime, checkoutTime);
+                    return ChargeResult.REJECTED_POST_CHECKOUT;
+                }
+            }
+        }
+
+        // Check duplicate again under lock
+        if (folioEntryRepository.findBySourceTypeAndSourceId(FolioSourceType.ROOM_SERVICE_ORDER, orderId).isPresent()) {
+            return ChargeResult.DUPLICATE;
+        }
+
+        BigDecimal amount = payload.amount().setScale(2, RoundingMode.HALF_UP);
+        FolioEntryEntity entry = new FolioEntryEntity(
+                UUID.randomUUID(),
+                folio.getId(),
+                folio.getCurrency(),
+                FolioEntryType.ROOM_SERVICE,
+                FolioSourceType.ROOM_SERVICE_ORDER,
+                orderId,
+                amount,
+                "Room service order " + orderId,
+                null,
+                "SYSTEM",
+                chargeTime,
+                Instant.now()
+        );
+
+        try {
+            folioEntryRepository.saveAndFlush(entry);
+        } catch (DataIntegrityViolationException ex) {
+            log.info("Concurrent insert caught by uq_folio_entries_room_service_order for orderId: {}", orderId);
+            return ChargeResult.DUPLICATE;
+        }
+
+        try {
+            roomServiceChargeRepository.insertChargeOnConflictDoNothing(
+                    UUID.randomUUID(),
+                    orderId,
+                    stay.getId(),
+                    amount,
+                    chargeCurrency,
+                    eventId,
+                    chargeTime
+            );
+        } catch (Exception ex) {
+            log.warn("Compatibility insert into room_service_charges skipped/failed: {}", ex.getMessage());
+        }
+
+        log.info("Applied room service charge V2 of {} {} for order {} to folio {}",
+                amount, chargeCurrency, orderId, folio.getId());
         return ChargeResult.APPLIED;
     }
 

@@ -1,6 +1,7 @@
 package com.hotelos.reception.service;
 
 import com.hotelos.common.dto.PageResponse;
+import com.hotelos.reception.client.RoomServiceInternalClient;
 import com.hotelos.reception.domain.ReservationStatus;
 import com.hotelos.reception.domain.RoomType;
 import com.hotelos.reception.dto.*;
@@ -46,6 +47,8 @@ public class StayService {
     private final StayRoomHistoryRepository stayRoomHistoryRepository;
     private final RoomServiceChargeRepository roomServiceChargeRepository;
     private final BillingService billingService;
+    private final RoomServiceInternalClient roomServiceInternalClient;
+    private final boolean strictBarrier;
 
     public StayService(
             StayTransactionService transactionService,
@@ -54,7 +57,9 @@ public class StayService {
             RoomRepository roomRepository,
             StayRoomHistoryRepository stayRoomHistoryRepository,
             RoomServiceChargeRepository roomServiceChargeRepository,
-            BillingService billingService
+            BillingService billingService,
+            RoomServiceInternalClient roomServiceInternalClient,
+            @org.springframework.beans.factory.annotation.Value("${hotelos.reception.strict-room-service-barrier:true}") boolean strictBarrier
     ) {
         this.transactionService = transactionService;
         this.guestStayRepository = guestStayRepository;
@@ -63,6 +68,8 @@ public class StayService {
         this.stayRoomHistoryRepository = stayRoomHistoryRepository;
         this.roomServiceChargeRepository = roomServiceChargeRepository;
         this.billingService = billingService;
+        this.roomServiceInternalClient = roomServiceInternalClient;
+        this.strictBarrier = strictBarrier;
     }
 
     public StayTransactionService.StayCreationResult checkInReservation(UUID reservationId) {
@@ -226,6 +233,80 @@ public class StayService {
     }
 
     public CheckOutResponse checkOutStay(UUID stayId) {
+        GuestStayEntity initialStay = guestStayRepository.findById(stayId)
+                .orElseThrow(() -> new ResourceNotFoundException("Stay not found: " + stayId));
+        if (initialStay.isCheckedOut()) {
+            throw new ConflictException("STAY_ALREADY_CHECKED_OUT", "Stay " + stayId + " is already checked out");
+        }
+
+        if (!strictBarrier) {
+            // STRICT=false: Compatibility mode (P3.4 semantics)
+            for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+                GuestStayEntity stay = guestStayRepository.findById(stayId)
+                        .orElseThrow(() -> new ResourceNotFoundException("Stay not found: " + stayId));
+                if (stay.isCheckedOut()) {
+                    throw new ConflictException("STAY_ALREADY_CHECKED_OUT", "Stay " + stayId + " is already checked out");
+                }
+
+                StayRoutingSnapshot snapshot = new StayRoutingSnapshot(
+                        stay.getId(),
+                        stay.getRoomNumber(),
+                        null,
+                        stay.getCheckInDate(),
+                        stay.getBookedNights(),
+                        stay.getCheckInDate().plusDays(stay.getBookedNights()),
+                        stay.getCheckedOutAt()
+                );
+
+                try {
+                    return transactionService.checkOutStay(stayId, snapshot);
+                } catch (ConcurrentRoutingMismatchException ex) {
+                    log.warn("Attempt {}/{}: Routing mismatch during checkout for stay {}: {}",
+                            attempt, MAX_ATTEMPTS, stayId, ex.getMessage());
+                    if (attempt == MAX_ATTEMPTS) {
+                        throw new ConflictException("CONCURRENT_STATE_CHANGE",
+                                "Stay routing was modified concurrently. Please retry operation.");
+                    }
+                    backoff(attempt);
+                }
+            }
+            throw new ConflictException("CONCURRENT_STATE_CHANGE", "Max checkout retries exceeded");
+        }
+
+        // STRICT=true: 3-Phase Barrier Checkout
+        // PHASE 1 — OUTSIDE DB TX: Call Room Service /freeze
+        FreezeStayResponse freezeResponse = roomServiceInternalClient.freezeStay(stayId);
+        UUID freezeId = freezeResponse.freezeId();
+        List<RoomServiceChargeItem> charges = freezeResponse.charges() != null ? freezeResponse.charges() : List.of();
+
+        // PHASE 2 — LOCAL ATOMIC CHECKOUT: Transactional checkout in Reception
+        CheckOutResponse checkOutResponse;
+        try {
+            checkOutResponse = executeCheckoutWithRetry(stayId, freezeId, charges);
+        } catch (Exception ex) {
+            // Phase 2 FAILED before commit -> Best-effort unfreeze!
+            try {
+                log.warn("Checkout local transaction failed for stay {}. Attempting best-effort unfreeze for freezeId {}", stayId, freezeId);
+                roomServiceInternalClient.unfreezeStay(stayId, freezeId);
+            } catch (Exception unfreezeEx) {
+                log.error("Best-effort unfreeze failed for stay {}: {}", stayId, unfreezeEx.getMessage());
+            }
+            throw ex;
+        }
+
+        // PHASE 3 — FINALIZE OUTSIDE TX: Call Room Service /finalize
+        // Critical: Phase 2 COMMITTED! Under NO CIRCUMSTANCES call unfreeze!
+        try {
+            roomServiceInternalClient.finalizeStay(stayId, freezeId);
+        } catch (Exception finalizeEx) {
+            log.warn("Synchronous finalize failed for stay {} with freezeId {}. Transactional outbox will deliver fallback.",
+                    stayId, freezeId, finalizeEx);
+        }
+
+        return checkOutResponse;
+    }
+
+    private CheckOutResponse executeCheckoutWithRetry(UUID stayId, UUID freezeId, List<RoomServiceChargeItem> charges) {
         for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
             GuestStayEntity stay = guestStayRepository.findById(stayId)
                     .orElseThrow(() -> new ResourceNotFoundException("Stay not found: " + stayId));
@@ -244,7 +325,7 @@ public class StayService {
             );
 
             try {
-                return transactionService.checkOutStay(stayId, snapshot);
+                return transactionService.checkOutStay(stayId, snapshot, freezeId, charges);
             } catch (ConcurrentRoutingMismatchException ex) {
                 log.warn("Attempt {}/{}: Routing mismatch during checkout for stay {}: {}",
                         attempt, MAX_ATTEMPTS, stayId, ex.getMessage());

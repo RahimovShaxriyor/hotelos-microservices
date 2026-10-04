@@ -66,6 +66,8 @@ services:
       RECEPTION_DB_USER: ${RECEPTION_DB_USER:-reception_user}
       RECEPTION_DB_PASSWORD: ${RECEPTION_DB_PASSWORD:-reception_dev_pass}
       HOTELOS_JWT_PUBLIC_KEY_PATH: /secrets/jwt-public.pem
+      ROOM_SERVICE_URL: http://room-service:8083
+      HOTELOS_RECEPTION_STRICT_ROOM_SERVICE_BARRIER: ${HOTELOS_RECEPTION_STRICT_ROOM_SERVICE_BARRIER:-true}
     networks:
       - internal-app
       - internal-data
@@ -124,6 +126,7 @@ services:
       ROOM_SERVICE_DB_USER: ${ROOM_SERVICE_DB_USER:-room_service_user}
       ROOM_SERVICE_DB_PASSWORD: ${ROOM_SERVICE_DB_PASSWORD:-room_service_dev_pass}
       HOTELOS_JWT_PUBLIC_KEY_PATH: /secrets/jwt-public.pem
+      RECEPTION_SERVICE_URL: http://reception-service:8081
     networks:
       - internal-app
       - internal-data

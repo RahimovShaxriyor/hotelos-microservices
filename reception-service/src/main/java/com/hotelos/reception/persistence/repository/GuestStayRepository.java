@@ -21,6 +21,8 @@ public interface GuestStayRepository extends JpaRepository<GuestStayEntity, UUID
 
     Optional<GuestStayEntity> findByRoomNumberAndCheckedOutAtIsNull(String roomNumber);
 
+    List<GuestStayEntity> findAllByRoomNumberAndCheckedOutAtIsNull(String roomNumber);
+
     List<GuestStayEntity> findByCheckedOutAtIsNullOrderByRoomNumberAsc();
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)

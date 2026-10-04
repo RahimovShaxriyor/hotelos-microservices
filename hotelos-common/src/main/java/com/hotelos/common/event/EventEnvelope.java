@@ -22,10 +22,21 @@ public record EventEnvelope<T>(
             String correlationId,
             T payload
     ) {
+        return create(eventType, source, aggregateId, correlationId, payload, CURRENT_VERSION);
+    }
+
+    public static <T> EventEnvelope<T> create(
+            String eventType,
+            String source,
+            String aggregateId,
+            String correlationId,
+            T payload,
+            int eventVersion
+    ) {
         return new EventEnvelope<>(
                 UUID.randomUUID(),
                 eventType,
-                CURRENT_VERSION,
+                eventVersion,
                 Instant.now(),
                 source,
                 aggregateId,

@@ -410,6 +410,11 @@ public class StayTransactionService {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW, isolation = Isolation.READ_COMMITTED)
     public CheckOutResponse checkOutStay(UUID stayId, StayRoutingSnapshot snapshot) {
+        return checkOutStay(stayId, snapshot, null, java.util.Collections.emptyList());
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW, isolation = Isolation.READ_COMMITTED)
+    public CheckOutResponse checkOutStay(UUID stayId, StayRoutingSnapshot snapshot, UUID freezeId, List<RoomServiceChargeItem> charges) {
         // Level 3: Room Lock
         RoomEntity room = roomRepository.findByRoomNumberForUpdate(snapshot.currentRoomNumber())
                 .orElseThrow(() -> new ResourceNotFoundException("Room not found: " + snapshot.currentRoomNumber()));
@@ -435,6 +440,11 @@ public class StayTransactionService {
             stayRoomHistoryRepository.save(activeSegment);
         }
 
+        // Reconcile snapshot charges if present
+        if (charges != null && !charges.isEmpty()) {
+            folioTransactionService.reconcileRoomServiceCharges(stayId, charges);
+        }
+
         // Level 6: Early checkout credit & Close Folio
         LocalDate hotelToday = LocalDate.now(hotelClock);
         long daysBetween = ChronoUnit.DAYS.between(stay.getCheckInDate(), hotelToday);
@@ -443,7 +453,7 @@ public class StayTransactionService {
         if (unusedNights > 0) {
             folioTransactionService.recordEarlyCheckoutCredit(stay.getId(), unusedNights, stay.getNightlyRateAtCheckin(), checkedOutAt);
         }
-        folioTransactionService.closeFolio(stay.getId(), checkedOutAt);
+        com.hotelos.reception.persistence.entity.FolioEntity closedFolio = folioTransactionService.closeFolio(stay.getId(), checkedOutAt);
 
         stay.setCheckedOutAt(checkedOutAt);
         guestStayRepository.save(stay);
@@ -452,8 +462,8 @@ public class StayTransactionService {
         room.vacate(turnoverCorrelationId);
         roomRepository.save(room);
 
-        BigDecimal charges = roomServiceChargeRepository.sumChargesByStayId(stay.getId());
-        BigDecimal total = billingService.calculateBill(stay, charges);
+        BigDecimal rsCharges = roomServiceChargeRepository.sumChargesByStayId(stay.getId());
+        BigDecimal total = billingService.calculateBill(stay, rsCharges);
 
         EventEnvelope<RoomOccupancyChangedPayload> occupancyEvent = EventEnvelope.create(
                 EventTypes.ROOM_OCCUPANCY_CHANGED,
@@ -473,7 +483,24 @@ public class StayTransactionService {
         );
         outboxService.enqueue(vacatedEvent, MessagingConstants.HOTEL_EXCHANGE, RoutingKeys.ROOM_VACATED);
 
-        log.info("Stay {} checked out for room {}, total bill {}", stayId, room.getRoomNumber(), total);
+        // Enqueue reception.stay.checked_out outbox event
+        com.hotelos.common.event.payload.StayCheckedOutPayload checkedOutPayload =
+                new com.hotelos.common.event.payload.StayCheckedOutPayload(
+                        stayId,
+                        closedFolio.getId(),
+                        checkedOutAt,
+                        freezeId
+                );
+        EventEnvelope<com.hotelos.common.event.payload.StayCheckedOutPayload> checkedOutEnvelope = EventEnvelope.create(
+                EventTypes.STAY_CHECKED_OUT,
+                "reception-service",
+                stayId.toString(),
+                null,
+                checkedOutPayload
+        );
+        outboxService.enqueue(checkedOutEnvelope, MessagingConstants.HOTEL_EXCHANGE, RoutingKeys.STAY_CHECKED_OUT);
+
+        log.info("Stay {} checked out for room {}, total bill {}, freezeId {}", stayId, room.getRoomNumber(), total, freezeId);
         return new CheckOutResponse(room.getRoomNumber(), stay.getGuestName(), total, stay.getCurrency(),
                 "Guest checked out and room vacated event published");
     }

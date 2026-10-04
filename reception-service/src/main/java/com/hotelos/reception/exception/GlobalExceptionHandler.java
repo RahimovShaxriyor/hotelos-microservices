@@ -23,6 +23,18 @@ public class GlobalExceptionHandler {
                 .body(new ConflictErrorResponse(ex.getCode(), ex.getMessage(), Instant.now()));
     }
 
+    @ExceptionHandler(ServiceUnavailableException.class)
+    public ResponseEntity<ConflictErrorResponse> handleServiceUnavailable(ServiceUnavailableException ex) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(new ConflictErrorResponse(ex.getCode(), ex.getMessage(), Instant.now()));
+    }
+
+    @ExceptionHandler(NoActiveStayException.class)
+    public ResponseEntity<ConflictErrorResponse> handleNoActiveStay(NoActiveStayException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ConflictErrorResponse("NO_ACTIVE_STAY", ex.getMessage(), Instant.now()));
+    }
+
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleNotFound(ResourceNotFoundException ex) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(ex.getMessage(), Instant.now()));

@@ -27,6 +27,22 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import com.hotelos.common.event.payload.RoomServiceChargePayloadV2;
+import com.hotelos.roomservice.client.ReceptionClient;
+import com.hotelos.roomservice.domain.OrderingSessionStatus;
+import com.hotelos.roomservice.dto.ActiveStayResolutionResponse;
+import com.hotelos.roomservice.exception.ConflictException;
+import com.hotelos.roomservice.exception.NoActiveStayException;
+import com.hotelos.roomservice.persistence.entity.StayOrderingSessionEntity;
+import com.hotelos.roomservice.persistence.repository.StayOrderingSessionRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
+
+import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.*;
 
 @Service
@@ -37,33 +53,74 @@ public class OrderWorkflowService {
     private final OrderItemRepository orderItemRepository;
     private final RoomServiceOutboxService outboxService;
     private final RoomServiceOutboxRepository outboxRepository;
+    private final StayOrderingSessionRepository sessionRepository;
+    private final ReceptionClient receptionClient;
+    private final TransactionTemplate transactionTemplate;
 
     public OrderWorkflowService(
             OrderRepository orderRepository,
             OrderItemRepository orderItemRepository,
             RoomServiceOutboxService outboxService,
-            RoomServiceOutboxRepository outboxRepository
+            RoomServiceOutboxRepository outboxRepository,
+            StayOrderingSessionRepository sessionRepository,
+            ReceptionClient receptionClient,
+            TransactionTemplate transactionTemplate
     ) {
         this.orderRepository = orderRepository;
         this.orderItemRepository = orderItemRepository;
         this.outboxService = outboxService;
         this.outboxRepository = outboxRepository;
+        this.sessionRepository = sessionRepository;
+        this.receptionClient = receptionClient;
+        this.transactionTemplate = transactionTemplate;
+    }
+
+    public RoomOrder createOrder(CreateOrderRequest request) {
+        validate(request);
+        String roomNumber = request.getRoomNumber().trim();
+
+        // 1. Outside DB transaction: call Reception to resolve active stay
+        ActiveStayResolutionResponse activeStay = receptionClient.resolveActiveStay(roomNumber);
+        if (activeStay == null || activeStay.stayId() == null) {
+            throw new NoActiveStayException("No active stay found for room: " + roomNumber);
+        }
+
+        // Validate client-supplied currency against authoritative stay currency
+        if (request.getCurrency() != null && !request.getCurrency().isBlank()) {
+            String clientCurrency = request.getCurrency().trim().toUpperCase(Locale.ROOT);
+            if (!clientCurrency.equalsIgnoreCase(activeStay.currency())) {
+                throw new HotelValidationException("Supplied currency " + clientCurrency + " does not match stay currency " + activeStay.currency());
+            }
+        }
+
+        return transactionTemplate.execute(status -> createOrderWithSession(request, activeStay));
     }
 
     @Transactional
-    public RoomOrder createOrder(CreateOrderRequest request) {
-        validate(request);
+    public RoomOrder createOrderWithSession(CreateOrderRequest request, ActiveStayResolutionResponse activeStay) {
+        UUID stayId = activeStay.stayId();
+
+        // 1. Ensure ordering session row atomically
+        sessionRepository.ensureSessionRow(stayId);
+
+        // 2. Lock session FOR UPDATE
+        StayOrderingSessionEntity session = sessionRepository.findByStayIdForUpdate(stayId)
+                .orElseThrow(() -> new IllegalStateException("Failed to lock stay ordering session: " + stayId));
+
+        if (session.getStatus() == OrderingSessionStatus.FROZEN) {
+            throw new ConflictException("STAY_ORDERING_FROZEN", "Cannot create order: stay ordering session is frozen");
+        }
+        if (session.getStatus() == OrderingSessionStatus.CLOSED) {
+            throw new ConflictException("STAY_ORDERING_CLOSED", "Cannot create order: stay ordering session is closed");
+        }
+
         UUID orderId = UUID.randomUUID();
         Instant now = Instant.now();
-
-        String currency = CurrencyValidator.DEFAULT_CURRENCY;
-        if (request.getCurrency() != null && !request.getCurrency().isBlank()) {
-            CurrencyValidator.validate(request.getCurrency());
-            currency = request.getCurrency().trim().toUpperCase(Locale.ROOT);
-        }
+        String currency = activeStay.currency();
 
         RoomServiceOrderEntity orderEntity = new RoomServiceOrderEntity(
                 orderId,
+                stayId,
                 request.getRoomNumber().trim(),
                 OrderStatus.RECEIVED,
                 currency,
@@ -85,7 +142,7 @@ public class OrderWorkflowService {
         }
 
         orderRepository.save(orderEntity);
-        log.info("Created order {} for room {}", orderId, request.getRoomNumber());
+        log.info("Created order {} for stay {} room {}", orderId, stayId, request.getRoomNumber());
 
         RoomOrder domainOrder = toDomain(orderEntity);
         String correlationId = UUID.randomUUID().toString();
@@ -121,6 +178,24 @@ public class OrderWorkflowService {
     @Transactional
     public RoomOrder nextStatus(String orderIdStr) {
         UUID orderId = parseUuid(orderIdStr);
+
+        // Read order first to determine stayId
+        RoomServiceOrderEntity existing = orderRepository.findById(orderId)
+                .orElseThrow(() -> new HotelValidationException("Unknown order ID: " + orderIdStr));
+
+        UUID stayId = existing.getStayId();
+        if (stayId != null) {
+            // Lock session first according to lock hierarchy: sessions -> orders
+            StayOrderingSessionEntity session = sessionRepository.findByStayIdForUpdate(stayId)
+                    .orElseThrow(() -> new IllegalStateException("Stay ordering session missing for stay: " + stayId));
+            if (session.getStatus() == OrderingSessionStatus.FROZEN) {
+                throw new ConflictException("STAY_ORDERING_FROZEN", "Cannot advance order: stay ordering session is frozen");
+            }
+            if (session.getStatus() == OrderingSessionStatus.CLOSED) {
+                throw new ConflictException("STAY_ORDERING_CLOSED", "Cannot advance order: stay ordering session is closed");
+            }
+        }
+
         RoomServiceOrderEntity order = orderRepository.findByIdForUpdate(orderId)
                 .orElseThrow(() -> new HotelValidationException("Unknown order ID: " + orderIdStr));
 
@@ -175,24 +250,50 @@ public class OrderWorkflowService {
         );
 
         if (justDelivered) {
-            log.info("Order {} transitioned to DELIVERED. Scheduling room service charge.", domainOrder.getOrderId());
-            outboxService.enqueue(
-                    EventEnvelope.create(
-                            EventTypes.ROOM_SERVICE_CHARGE,
-                            "room-service",
-                            domainOrder.getOrderId(),
-                            correlationId,
-                            new RoomServiceChargePayload(
-                                    domainOrder.getOrderId(),
-                                    domainOrder.getRoomNumber(),
-                                    domainOrder.total(),
-                                    domainOrder.getCurrency(),
-                                    order.getDeliveredAt()
-                            )
-                    ),
-                    MessagingConstants.HOTEL_EXCHANGE,
-                    RoutingKeys.ROOM_SERVICE_CHARGE
-            );
+            BigDecimal chargeAmount = OrderCalculationHelper.calculateOrderTotal(order);
+            log.info("Order {} transitioned to DELIVERED. Scheduling room service charge of {}", domainOrder.getOrderId(), chargeAmount);
+
+            if (order.getStayId() != null) {
+                // V2 event for orders bound to a stay
+                outboxService.enqueue(
+                        EventEnvelope.create(
+                                EventTypes.ROOM_SERVICE_CHARGE,
+                                "room-service",
+                                domainOrder.getOrderId(),
+                                correlationId,
+                                new RoomServiceChargePayloadV2(
+                                        domainOrder.getOrderId(),
+                                        order.getStayId(),
+                                        domainOrder.getRoomNumber(),
+                                        chargeAmount,
+                                        domainOrder.getCurrency(),
+                                        order.getDeliveredAt()
+                                ),
+                                2
+                        ),
+                        MessagingConstants.HOTEL_EXCHANGE,
+                        RoutingKeys.ROOM_SERVICE_CHARGE
+                );
+            } else {
+                // Legacy V1 event for historical/unbound orders
+                outboxService.enqueue(
+                        EventEnvelope.create(
+                                EventTypes.ROOM_SERVICE_CHARGE,
+                                "room-service",
+                                domainOrder.getOrderId(),
+                                correlationId,
+                                new RoomServiceChargePayload(
+                                        domainOrder.getOrderId(),
+                                        domainOrder.getRoomNumber(),
+                                        chargeAmount,
+                                        domainOrder.getCurrency(),
+                                        order.getDeliveredAt()
+                                )
+                        ),
+                        MessagingConstants.HOTEL_EXCHANGE,
+                        RoutingKeys.ROOM_SERVICE_CHARGE
+                );
+            }
         }
 
         return domainOrder;
@@ -201,6 +302,22 @@ public class OrderWorkflowService {
     @Transactional
     public RoomOrder cancel(String orderIdStr) {
         UUID orderId = parseUuid(orderIdStr);
+
+        RoomServiceOrderEntity existing = orderRepository.findById(orderId)
+                .orElseThrow(() -> new HotelValidationException("Unknown order ID: " + orderIdStr));
+
+        UUID stayId = existing.getStayId();
+        if (stayId != null) {
+            StayOrderingSessionEntity session = sessionRepository.findByStayIdForUpdate(stayId)
+                    .orElseThrow(() -> new IllegalStateException("Stay ordering session missing for stay: " + stayId));
+            if (session.getStatus() == OrderingSessionStatus.FROZEN) {
+                throw new ConflictException("STAY_ORDERING_FROZEN", "Cannot cancel order: stay ordering session is frozen");
+            }
+            if (session.getStatus() == OrderingSessionStatus.CLOSED) {
+                throw new ConflictException("STAY_ORDERING_CLOSED", "Cannot cancel order: stay ordering session is closed");
+            }
+        }
+
         RoomServiceOrderEntity order = orderRepository.findByIdForUpdate(orderId)
                 .orElseThrow(() -> new HotelValidationException("Unknown order ID: " + orderIdStr));
 
@@ -280,8 +397,9 @@ public class OrderWorkflowService {
     public Map<String, Object> reset() {
         orderItemRepository.deleteAllInBatch();
         orderRepository.deleteAllInBatch();
+        sessionRepository.deleteAllInBatch();
         outboxRepository.deleteAllInBatch();
-        log.info("Room service orders, items, and outbox cleared via reset");
+        log.info("Room service orders, items, sessions, and outbox cleared via reset");
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("message", "Room service orders have been cleared");

@@ -36,8 +36,15 @@ spring:
     publisher-returns: true
     template:
       mandatory: true
+    listener:
+      simple:
+        default-requeue-rejected: false
 hotelos:
   hotel-zone: ${HOTELOS_HOTEL_ZONE:Asia/Tashkent}
+  reception:
+    strict-room-service-barrier: ${HOTELOS_RECEPTION_STRICT_ROOM_SERVICE_BARRIER:true}
+  room-service:
+    service-url: ${ROOM_SERVICE_URL:http://localhost:8083}
   outbox:
     poll-interval-ms: 500
     batch-size: 10

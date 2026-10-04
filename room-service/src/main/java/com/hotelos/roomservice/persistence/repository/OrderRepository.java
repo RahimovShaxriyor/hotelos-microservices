@@ -31,4 +31,11 @@ public interface OrderRepository extends JpaRepository<RoomServiceOrderEntity, U
     @EntityGraph(attributePaths = {"items"})
     @Query("SELECT o FROM RoomServiceOrderEntity o WHERE o.roomNumber = :roomNumber ORDER BY o.createdAt ASC, o.id ASC")
     List<RoomServiceOrderEntity> findByRoomNumberWithItems(@Param("roomNumber") String roomNumber);
+
+    @Query("SELECT o FROM RoomServiceOrderEntity o WHERE o.stayId = :stayId AND o.status IN (com.hotelos.roomservice.domain.OrderStatus.RECEIVED, com.hotelos.roomservice.domain.OrderStatus.PREPARING, com.hotelos.roomservice.domain.OrderStatus.DELIVERING)")
+    List<RoomServiceOrderEntity> findPendingOrdersByStayId(@Param("stayId") UUID stayId);
+
+    @EntityGraph(attributePaths = {"items"})
+    @Query("SELECT o FROM RoomServiceOrderEntity o WHERE o.stayId = :stayId AND o.status = com.hotelos.roomservice.domain.OrderStatus.DELIVERED ORDER BY o.deliveredAt ASC, o.id ASC")
+    List<RoomServiceOrderEntity> findDeliveredOrdersByStayIdWithItems(@Param("stayId") UUID stayId);
 }

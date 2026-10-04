@@ -16,9 +16,20 @@ public class RabbitConfig {
     public static final String EXCHANGE = MessagingConstants.HOTEL_EXCHANGE;
     public static final String ROOM_SERVICE_ORDER_UPDATED = RoutingKeys.ROOM_SERVICE_ORDER_UPDATED;
     public static final String ROOM_SERVICE_CHARGE = RoutingKeys.ROOM_SERVICE_CHARGE;
+    public static final String ROOM_SERVICE_STAY_CHECKED_OUT_QUEUE = "room-service.stay.checked-out";
 
     @Bean
     public TopicExchange hotelExchange() { return new TopicExchange(EXCHANGE, true, false); }
+
+    @Bean
+    public org.springframework.amqp.core.Queue roomServiceStayCheckedOutQueue() {
+        return org.springframework.amqp.core.QueueBuilder.durable(ROOM_SERVICE_STAY_CHECKED_OUT_QUEUE).build();
+    }
+
+    @Bean
+    public org.springframework.amqp.core.Binding stayCheckedOutBinding(TopicExchange hotelExchange, org.springframework.amqp.core.Queue roomServiceStayCheckedOutQueue) {
+        return org.springframework.amqp.core.BindingBuilder.bind(roomServiceStayCheckedOutQueue).to(hotelExchange).with(RoutingKeys.STAY_CHECKED_OUT);
+    }
 
     @Bean
     public MessageConverter jsonMessageConverter() {

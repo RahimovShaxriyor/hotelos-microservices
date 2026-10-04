@@ -37,7 +37,13 @@ spring:
     publisher-returns: true
     template:
       mandatory: true
+    listener:
+      simple:
+        default-requeue-rejected: false
 hotelos:
+  reception:
+    service-url: ${RECEPTION_SERVICE_URL:http://localhost:8081}
+  strict-barrier: ${HOTELOS_ROOM_SERVICE_STRICT_BARRIER:true}
   outbox:
     poll-interval-ms: 500
     batch-size: 10

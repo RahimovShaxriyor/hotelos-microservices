@@ -36,6 +36,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                         .requestMatchers("/api/room-service/dev/**").hasRole("ADMIN")
+                        .requestMatchers("/api/room-service/internal/**").hasAnyRole("ADMIN", "RECEPTIONIST")
                         .requestMatchers("/api/room-service/**").hasAnyRole("ADMIN", "MANAGER", "ROOM_SERVICE")
                         .anyRequest().denyAll()
                 )

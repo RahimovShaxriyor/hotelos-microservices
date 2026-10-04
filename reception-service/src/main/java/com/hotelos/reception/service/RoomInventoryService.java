@@ -9,6 +9,9 @@ import com.hotelos.common.event.payload.RoomHousekeepingStatusChangedPayload;
 import com.hotelos.common.event.payload.RoomOccupancyChangedPayload;
 import com.hotelos.common.event.payload.RoomServiceChargePayload;
 import com.hotelos.common.event.payload.RoomVacatedPayload;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.hotelos.common.event.payload.RoomServiceChargePayloadV2;
 import com.hotelos.reception.config.RabbitConfig;
 import com.hotelos.reception.domain.*;
 import com.hotelos.reception.dto.CheckInRequest;
@@ -69,6 +72,7 @@ public class RoomInventoryService {
     private final FolioTransactionService folioTransactionService;
     private final FolioRepository folioRepository;
     private final FolioEntryRepository folioEntryRepository;
+    private final ObjectMapper objectMapper;
 
     public RoomInventoryService(
             RoomRepository roomRepository,
@@ -87,7 +91,8 @@ public class RoomInventoryService {
             StayService stayService,
             FolioTransactionService folioTransactionService,
             FolioRepository folioRepository,
-            FolioEntryRepository folioEntryRepository
+            FolioEntryRepository folioEntryRepository,
+            ObjectMapper objectMapper
     ) {
         this.roomRepository = roomRepository;
         this.guestStayRepository = guestStayRepository;
@@ -106,6 +111,7 @@ public class RoomInventoryService {
         this.folioTransactionService = folioTransactionService;
         this.folioRepository = folioRepository;
         this.folioEntryRepository = folioEntryRepository;
+        this.objectMapper = objectMapper;
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -456,16 +462,58 @@ public class RoomInventoryService {
 
     @RabbitListener(queues = RabbitConfig.RECEPTION_CHARGE_QUEUE)
     @Transactional
-    public void onRoomServiceCharge(EventEnvelope<RoomServiceChargePayload> event) {
-        ReceptionInboxService.InboxResult inboxResult = inboxService.registerEvent(event);
-        if (inboxResult != ReceptionInboxService.InboxResult.PROCEED) {
+    public void onRoomServiceCharge(EventEnvelope<JsonNode> event) {
+        boolean isValidType = event != null && (EventTypes.ROOM_SERVICE_CHARGE.equals(event.eventType())
+                || "ROOM_SERVICE_CHARGE_APPLIED".equals(event.eventType()));
+        if (!isValidType) {
+            log.warn("UNEXPECTED_EVENT_TYPE: expected {} but got {}",
+                    EventTypes.ROOM_SERVICE_CHARGE, event != null ? event.eventType() : null);
             return;
         }
 
-        RoomServiceChargePayload payload = event.payload();
-        String orderId = payload.orderId();
-        if (orderId == null || orderId.isBlank()) {
-            log.warn("Received room service charge without orderId, ignoring: {}", payload);
+        switch (event.eventVersion()) {
+            case 1 -> handleRoomServiceChargeV1(event);
+            case 2 -> handleRoomServiceChargeV2(event);
+            default -> {
+                log.warn("UNSUPPORTED_EVENT_VERSION: Received unsupported version {} for eventId {}",
+                        event.eventVersion(), event.eventId());
+                // permanent reject: ACK, no mutation, no infinite requeue
+            }
+        }
+    }
+
+    private void handleRoomServiceChargeV1(EventEnvelope<JsonNode> event) {
+        RoomServiceChargePayload payload;
+        try {
+            if (event.payload() == null || event.payload().isNull()) {
+                throw new IllegalArgumentException("Payload is null");
+            }
+            payload = objectMapper.treeToValue(event.payload(), RoomServiceChargePayload.class);
+            if (payload == null) {
+                throw new IllegalArgumentException("Payload deserialized to null");
+            }
+            if (payload.orderId() == null || payload.orderId().isBlank()) {
+                throw new IllegalArgumentException("missing orderId");
+            }
+            if (payload.roomNumber() == null || payload.roomNumber().isBlank()) {
+                throw new IllegalArgumentException("missing roomNumber");
+            }
+            if (payload.amount() == null || payload.amount().compareTo(BigDecimal.ZERO) <= 0) {
+                throw new IllegalArgumentException("invalid amount");
+            }
+            if (payload.currency() == null || payload.currency().isBlank()) {
+                throw new IllegalArgumentException("invalid currency");
+            }
+            if (payload.chargedAt() == null) {
+                throw new IllegalArgumentException("missing chargedAt");
+            }
+        } catch (Exception ex) {
+            log.warn("MALFORMED_EVENT_PAYLOAD (V1): {}", ex.getMessage());
+            return; // ACK without mutation
+        }
+
+        ReceptionInboxService.InboxResult inboxResult = inboxService.registerEvent(event);
+        if (inboxResult != ReceptionInboxService.InboxResult.PROCEED) {
             return;
         }
 
@@ -473,12 +521,60 @@ public class RoomInventoryService {
                 payload, event.occurredAt(), event.eventId()
         );
         switch (result) {
-            case APPLIED -> log.info("Applied room service charge of {} for order {}", payload.amount(), orderId);
-            case DUPLICATE -> log.info("Duplicate room service charge ignored for orderId: {}", orderId);
+            case APPLIED -> log.info("Applied room service charge of {} for order {}", payload.amount(), payload.orderId());
+            case DUPLICATE -> log.info("Duplicate room service charge ignored for orderId: {}", payload.orderId());
             case UNRESOLVED -> log.warn("UNRESOLVED_STAY_AT_TIMESTAMP for room {} at {}", payload.roomNumber(), payload.chargedAt());
-            case CURRENCY_MISMATCH -> log.warn("FOLIO_CURRENCY_MISMATCH for order {}", orderId);
-            case REJECTED_POST_CHECKOUT -> log.warn("REJECTED_POST_CHECKOUT for order {}", orderId);
-            case AMBIGUOUS_STAY_MATCH -> log.warn("AMBIGUOUS_STAY_MATCH for order {}", orderId);
+            case CURRENCY_MISMATCH -> log.warn("FOLIO_CURRENCY_MISMATCH for order {}", payload.orderId());
+            case REJECTED_POST_CHECKOUT -> log.warn("REJECTED_POST_CHECKOUT for order {}", payload.orderId());
+            case AMBIGUOUS_STAY_MATCH -> log.warn("AMBIGUOUS_STAY_MATCH for order {}", payload.orderId());
+        }
+    }
+
+    private void handleRoomServiceChargeV2(EventEnvelope<JsonNode> event) {
+        RoomServiceChargePayloadV2 payload;
+        try {
+            if (event.payload() == null || event.payload().isNull()) {
+                throw new IllegalArgumentException("Payload is null");
+            }
+            payload = objectMapper.treeToValue(event.payload(), RoomServiceChargePayloadV2.class);
+            if (payload == null) {
+                throw new IllegalArgumentException("Payload deserialized to null");
+            }
+            if (payload.orderId() == null || payload.orderId().isBlank()) {
+                throw new IllegalArgumentException("missing orderId");
+            }
+            if (payload.stayId() == null) {
+                throw new IllegalArgumentException("missing stayId V2");
+            }
+            if (payload.amount() == null || payload.amount().compareTo(BigDecimal.ZERO) <= 0) {
+                throw new IllegalArgumentException("invalid amount");
+            }
+            if (payload.currency() == null || payload.currency().isBlank()) {
+                throw new IllegalArgumentException("invalid currency");
+            }
+            if (payload.chargedAt() == null) {
+                throw new IllegalArgumentException("missing chargedAt");
+            }
+        } catch (Exception ex) {
+            log.warn("MALFORMED_EVENT_PAYLOAD (V2): {}", ex.getMessage());
+            return; // ACK without mutation
+        }
+
+        ReceptionInboxService.InboxResult inboxResult = inboxService.registerEvent(event);
+        if (inboxResult != ReceptionInboxService.InboxResult.PROCEED) {
+            return;
+        }
+
+        FolioTransactionService.ChargeResult result = folioTransactionService.processRoomServiceChargeV2(
+                payload, event.occurredAt(), event.eventId()
+        );
+        switch (result) {
+            case APPLIED -> log.info("Applied room service charge V2 of {} for order {}", payload.amount(), payload.orderId());
+            case DUPLICATE -> log.info("Duplicate room service charge V2 ignored for orderId: {}", payload.orderId());
+            case UNRESOLVED -> log.warn("UNRESOLVED_STAY for stay {} order {}", payload.stayId(), payload.orderId());
+            case CURRENCY_MISMATCH -> log.warn("FOLIO_CURRENCY_MISMATCH for order {}", payload.orderId());
+            case REJECTED_POST_CHECKOUT -> log.warn("REJECTED_POST_CHECKOUT for order {}", payload.orderId());
+            case AMBIGUOUS_STAY_MATCH -> log.warn("AMBIGUOUS_STAY_MATCH for order {}", payload.orderId());
         }
     }
 

@@ -40,6 +40,14 @@ public class GatewayExceptionHandler {
         return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).body(body);
     }
 
+    @ExceptionHandler({org.springframework.web.servlet.resource.NoResourceFoundException.class, org.springframework.web.servlet.NoHandlerFoundException.class})
+    public ResponseEntity<JsonNode> handleNotFound(Exception ex) {
+        ObjectNode body = objectMapper.createObjectNode();
+        body.put("error", "Not Found");
+        body.put("message", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(body);
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<JsonNode> handleUnexpected(Exception ex) {
         ObjectNode body = objectMapper.createObjectNode();

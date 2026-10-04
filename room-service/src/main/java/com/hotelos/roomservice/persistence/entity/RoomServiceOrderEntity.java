@@ -21,6 +21,9 @@ public class RoomServiceOrderEntity implements Persistable<UUID> {
     @Transient
     private boolean isNew = true;
 
+    @Column(name = "stay_id")
+    private UUID stayId;
+
     @Column(name = "room_number", nullable = false, length = 16)
     private String roomNumber;
 
@@ -51,11 +54,16 @@ public class RoomServiceOrderEntity implements Persistable<UUID> {
     }
 
     public RoomServiceOrderEntity(UUID id, String roomNumber, OrderStatus status, Instant createdAt, Instant statusChangedAt) {
-        this(id, roomNumber, status, "UZS", createdAt, statusChangedAt);
+        this(id, null, roomNumber, status, "UZS", createdAt, statusChangedAt);
     }
 
     public RoomServiceOrderEntity(UUID id, String roomNumber, OrderStatus status, String currency, Instant createdAt, Instant statusChangedAt) {
+        this(id, null, roomNumber, status, currency, createdAt, statusChangedAt);
+    }
+
+    public RoomServiceOrderEntity(UUID id, UUID stayId, String roomNumber, OrderStatus status, String currency, Instant createdAt, Instant statusChangedAt) {
         this.id = id;
+        this.stayId = stayId;
         this.roomNumber = roomNumber;
         this.status = status;
         this.currency = (currency != null && !currency.isBlank()) ? currency : "UZS";
@@ -150,5 +158,13 @@ public class RoomServiceOrderEntity implements Persistable<UUID> {
 
     public void setCurrency(String currency) {
         this.currency = currency;
+    }
+
+    public UUID getStayId() {
+        return stayId;
+    }
+
+    public void setStayId(UUID stayId) {
+        this.stayId = stayId;
     }
 }
