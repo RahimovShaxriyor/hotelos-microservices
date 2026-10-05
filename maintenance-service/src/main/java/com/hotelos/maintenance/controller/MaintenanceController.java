@@ -2,6 +2,7 @@ package com.hotelos.maintenance.controller;
 
 import com.hotelos.maintenance.domain.MaintenanceIssue;
 import com.hotelos.maintenance.dto.CreateIssueRequest;
+import com.hotelos.maintenance.dto.ResolveIssueRequest;
 import com.hotelos.maintenance.service.MaintenanceWorkflowService;
 import org.springframework.web.bind.annotation.*;
 
@@ -43,13 +44,19 @@ public class MaintenanceController {
     }
 
     @PatchMapping("/issues/{issueId}/resolve")
-    public MaintenanceIssue resolvePatch(@PathVariable String issueId) {
-        return maintenanceWorkflowService.resolve(issueId);
+    public MaintenanceIssue resolvePatch(
+            @PathVariable String issueId,
+            @RequestBody(required = false) ResolveIssueRequest request
+    ) {
+        return maintenanceWorkflowService.resolve(issueId, request);
     }
 
     @PostMapping("/issues/{issueId}/resolve")
-    public MaintenanceIssue resolvePost(@PathVariable String issueId) {
-        return maintenanceWorkflowService.resolve(issueId);
+    public MaintenanceIssue resolvePost(
+            @PathVariable String issueId,
+            @RequestBody(required = false) ResolveIssueRequest request
+    ) {
+        return maintenanceWorkflowService.resolve(issueId, request);
     }
 
     @PatchMapping("/issues/{issueId}/cancel")

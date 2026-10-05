@@ -35,6 +35,7 @@ public class SecurityConfig {
                 .formLogin(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
                         .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
+                        .requestMatchers("/api/maintenance/internal/**").hasAnyRole("HOUSEKEEPING", "ADMIN", "MANAGER")
                         .requestMatchers("/api/maintenance/dev/**").hasRole("ADMIN")
                         .requestMatchers("/api/maintenance/**").hasAnyRole("ADMIN", "MANAGER", "MAINTENANCE")
                         .anyRequest().denyAll()

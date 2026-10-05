@@ -1,6 +1,9 @@
 package com.hotelos.maintenance.persistence.entity;
 
+import com.hotelos.common.util.CanonicalTime;
+import com.hotelos.maintenance.domain.EngineeringImpact;
 import com.hotelos.maintenance.domain.IssuePriority;
+import com.hotelos.maintenance.domain.IssueSource;
 import com.hotelos.maintenance.domain.IssueStatus;
 import jakarta.persistence.*;
 import org.springframework.data.domain.Persistable;
@@ -51,6 +54,32 @@ public class MaintenanceIssueEntity implements Persistable<UUID> {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    @Column(name = "idempotency_key", length = 128)
+    private String idempotencyKey;
+
+    @Column(name = "request_fingerprint", length = 64)
+    private String requestFingerprint;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "source", length = 32, nullable = false)
+    private IssueSource source = IssueSource.DIRECT;
+
+    @Column(name = "source_reference_id", length = 64)
+    private String sourceReferenceId;
+
+    @Column(name = "requires_cleaning", nullable = false)
+    private boolean requiresCleaning = false;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "engineering_impact", length = 32, nullable = false)
+    private EngineeringImpact engineeringImpact = EngineeringImpact.OUT_OF_ORDER;
+
+    @Column(name = "cleanup_pending", nullable = false)
+    private boolean cleanupPending = false;
+
+    @Column(name = "cleanup_acknowledged_at")
+    private Instant cleanupAcknowledgedAt;
+
     @Transient
     private boolean isNew = true;
 
@@ -64,7 +93,11 @@ public class MaintenanceIssueEntity implements Persistable<UUID> {
         this.priority = priority;
         this.priorityRank = priority.getRank();
         this.status = IssueStatus.OPEN;
-        this.createdAt = createdAt != null ? createdAt : Instant.now();
+        this.source = IssueSource.DIRECT;
+        this.engineeringImpact = EngineeringImpact.OUT_OF_ORDER;
+        this.requiresCleaning = false;
+        this.cleanupPending = false;
+        this.createdAt = CanonicalTime.normalize(createdAt != null ? createdAt : Instant.now());
         this.updatedAt = this.createdAt;
         this.isNew = true;
     }
@@ -129,22 +162,86 @@ public class MaintenanceIssueEntity implements Persistable<UUID> {
         return updatedAt;
     }
 
+    public String getIdempotencyKey() {
+        return idempotencyKey;
+    }
+
+    public void setIdempotencyKey(String idempotencyKey) {
+        this.idempotencyKey = idempotencyKey;
+    }
+
+    public String getRequestFingerprint() {
+        return requestFingerprint;
+    }
+
+    public void setRequestFingerprint(String requestFingerprint) {
+        this.requestFingerprint = requestFingerprint;
+    }
+
+    public IssueSource getSource() {
+        return source;
+    }
+
+    public void setSource(IssueSource source) {
+        this.source = source;
+    }
+
+    public String getSourceReferenceId() {
+        return sourceReferenceId;
+    }
+
+    public void setSourceReferenceId(String sourceReferenceId) {
+        this.sourceReferenceId = sourceReferenceId;
+    }
+
+    public boolean isRequiresCleaning() {
+        return requiresCleaning;
+    }
+
+    public void setRequiresCleaning(boolean requiresCleaning) {
+        this.requiresCleaning = requiresCleaning;
+    }
+
+    public EngineeringImpact getEngineeringImpact() {
+        return engineeringImpact;
+    }
+
+    public void setEngineeringImpact(EngineeringImpact engineeringImpact) {
+        this.engineeringImpact = engineeringImpact;
+    }
+
+    public boolean isCleanupPending() {
+        return cleanupPending;
+    }
+
+    public void setCleanupPending(boolean cleanupPending) {
+        this.cleanupPending = cleanupPending;
+    }
+
+    public Instant getCleanupAcknowledgedAt() {
+        return cleanupAcknowledgedAt;
+    }
+
+    public void setCleanupAcknowledgedAt(Instant cleanupAcknowledgedAt) {
+        this.cleanupAcknowledgedAt = CanonicalTime.normalize(cleanupAcknowledgedAt);
+    }
+
     public void assign(String technicianName, Instant now) {
         this.assignedTechnician = technicianName;
-        this.assignedAt = now;
+        this.assignedAt = CanonicalTime.normalize(now);
         this.status = IssueStatus.ASSIGNED;
-        this.updatedAt = now;
+        this.updatedAt = this.assignedAt;
     }
 
     public void resolve(Instant now) {
         this.status = IssueStatus.RESOLVED;
-        this.resolvedAt = now;
-        this.updatedAt = now;
+        this.resolvedAt = CanonicalTime.normalize(now);
+        this.updatedAt = this.resolvedAt;
     }
 
     public void cancel(Instant now) {
         this.status = IssueStatus.CANCELLED;
-        this.cancelledAt = now;
-        this.updatedAt = now;
+        this.cancelledAt = CanonicalTime.normalize(now);
+        this.updatedAt = this.cancelledAt;
     }
 }

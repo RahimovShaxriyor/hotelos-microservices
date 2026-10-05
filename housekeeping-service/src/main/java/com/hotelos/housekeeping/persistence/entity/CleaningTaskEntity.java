@@ -1,5 +1,6 @@
 package com.hotelos.housekeeping.persistence.entity;
 
+import com.hotelos.common.util.CanonicalTime;
 import com.hotelos.housekeeping.domain.CleaningStatus;
 import com.hotelos.housekeeping.domain.TaskSource;
 import jakarta.persistence.*;
@@ -25,6 +26,9 @@ public class CleaningTaskEntity implements Persistable<UUID> {
 
     @Column(name = "turnover_correlation_id", length = 64)
     private String turnoverCorrelationId;
+
+    @Column(name = "source_reference_id", length = 64)
+    private String sourceReferenceId;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "task_status", length = 16, nullable = false)
@@ -59,7 +63,7 @@ public class CleaningTaskEntity implements Persistable<UUID> {
         this.turnoverCorrelationId = turnoverCorrelationId;
         this.taskStatus = CleaningStatus.WAITING;
         this.assignedCleaner = assignedCleaner;
-        this.createdAt = createdAt != null ? createdAt : Instant.now();
+        this.createdAt = CanonicalTime.normalize(createdAt != null ? createdAt : Instant.now());
         this.isNew = true;
     }
 
@@ -99,6 +103,14 @@ public class CleaningTaskEntity implements Persistable<UUID> {
         this.turnoverCorrelationId = turnoverCorrelationId;
     }
 
+    public String getSourceReferenceId() {
+        return sourceReferenceId;
+    }
+
+    public void setSourceReferenceId(String sourceReferenceId) {
+        this.sourceReferenceId = sourceReferenceId;
+    }
+
     public CleaningStatus getTaskStatus() {
         return taskStatus;
     }
@@ -123,6 +135,10 @@ public class CleaningTaskEntity implements Persistable<UUID> {
         return startedAt;
     }
 
+    public void setStartedAt(Instant startedAt) {
+        this.startedAt = CanonicalTime.normalize(startedAt);
+    }
+
     public Instant getCompletedAt() {
         return completedAt;
     }
@@ -133,17 +149,17 @@ public class CleaningTaskEntity implements Persistable<UUID> {
 
     public void start(Instant now) {
         this.taskStatus = CleaningStatus.CLEANING;
-        this.startedAt = now;
+        this.startedAt = CanonicalTime.normalize(now);
     }
 
     public void complete(Instant now) {
         this.taskStatus = CleaningStatus.CLEAN;
-        this.completedAt = now;
+        this.completedAt = CanonicalTime.normalize(now);
     }
 
     public void cancel(Instant now) {
         this.taskStatus = CleaningStatus.CANCELLED;
-        this.cancelledAt = now;
+        this.cancelledAt = CanonicalTime.normalize(now);
     }
 
     public void promoteToTurnover(String correlationId) {

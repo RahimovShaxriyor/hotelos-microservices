@@ -1,14 +1,21 @@
 package com.hotelos.maintenance.service;
 
+import com.hotelos.maintenance.domain.EngineeringImpact;
 import com.hotelos.maintenance.domain.IssuePriority;
+import com.hotelos.maintenance.domain.IssueSource;
 import com.hotelos.maintenance.domain.MaintenanceIssue;
+import com.hotelos.maintenance.dto.CreateInternalIssueRequest;
 import com.hotelos.maintenance.dto.CreateIssueRequest;
+import com.hotelos.maintenance.dto.ResolveIssueRequest;
+import com.hotelos.maintenance.exception.ConflictException;
 import com.hotelos.maintenance.exception.HotelValidationException;
+import com.hotelos.maintenance.persistence.entity.MaintenanceIssueEntity;
 import com.hotelos.maintenance.persistence.entity.TechnicianEntity;
 import com.hotelos.maintenance.persistence.repository.MaintenanceIssueRepository;
 import com.hotelos.maintenance.persistence.repository.TechnicianRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
@@ -35,6 +42,40 @@ public class MaintenanceWorkflowService {
         return result.issue();
     }
 
+    public MaintenanceIssue reportInternal(CreateInternalIssueRequest request, String idempotencyKey) {
+        validateInternal(request, idempotencyKey);
+        IssuePriority priority = IssuePriority.valueOf(request.getPriority().toUpperCase(Locale.ROOT));
+        IssueSource source = IssueSource.valueOf(request.getSource().toUpperCase(Locale.ROOT));
+
+        EngineeringImpact engineeringImpact = switch (priority) {
+            case CRITICAL -> EngineeringImpact.OUT_OF_ORDER;
+            case HIGH -> EngineeringImpact.OUT_OF_SERVICE;
+            case NORMAL, LOW -> EngineeringImpact.OPERATIONAL;
+        };
+
+        String fingerprint = MaintenanceTransactionService.computeFingerprint(
+                source, request.getRoomNumber(), request.getDescription(), priority, engineeringImpact
+        );
+
+        try {
+            MutationResult result = txService.executeReportInternal(request, idempotencyKey.trim());
+            return result.issue();
+        } catch (DataIntegrityViolationException ex) {
+            log.warn("Unique constraint conflict on source {} key {}. Attempting two-phase read recovery.", source, idempotencyKey);
+            Optional<MaintenanceIssueEntity> existingOpt = txService.findExistingBySourceAndKey(source, idempotencyKey.trim());
+            if (existingOpt.isPresent()) {
+                MaintenanceIssueEntity existing = existingOpt.get();
+                if (fingerprint.equals(existing.getRequestFingerprint())) {
+                    log.info("Two-phase recovery succeeded for source {} key {}", source, idempotencyKey);
+                    return MaintenanceIssue.fromEntity(existing);
+                } else {
+                    throw new ConflictException("IDEMPOTENCY_CONFLICT", "Conflicting payload for idempotency key: " + idempotencyKey);
+                }
+            }
+            throw ex;
+        }
+    }
+
     public MaintenanceIssue getIssue(String issueIdStr) {
         UUID issueId = parseUuid(issueIdStr);
         return issueRepository.findById(issueId)
@@ -57,10 +98,10 @@ public class MaintenanceWorkflowService {
         return result.queueSnapshot();
     }
 
-    public MaintenanceIssue resolve(String issueIdStr) {
+    public MaintenanceIssue resolve(String issueIdStr, ResolveIssueRequest request) {
         UUID issueId = parseUuid(issueIdStr);
         // TX1: room -> target issue -> technician release
-        MutationResult result = txService.executeResolve(issueId);
+        MutationResult result = txService.executeResolve(issueId, request);
 
         // TX2: Decoupled processNext()
         try {
@@ -127,6 +168,29 @@ public class MaintenanceWorkflowService {
             IssuePriority.valueOf(request.getPriority().toUpperCase(Locale.ROOT));
         } catch (Exception ex) {
             throw new HotelValidationException("Priority must be CRITICAL, HIGH, NORMAL or LOW");
+        }
+    }
+
+    private void validateInternal(CreateInternalIssueRequest request, String idempotencyKey) {
+        if (idempotencyKey == null || idempotencyKey.isBlank() || idempotencyKey.trim().length() > 128) {
+            throw new HotelValidationException("Idempotency-Key is required and must be between 1 and 128 characters");
+        }
+        if (request == null || request.getRoomNumber() == null || request.getRoomNumber().isBlank()) {
+            throw new HotelValidationException("Room number is required");
+        }
+        if (request.getDescription() == null || request.getDescription().isBlank()) {
+            throw new HotelValidationException("Issue description is required");
+        }
+        if (request.getPriority() == null || request.getPriority().isBlank()) {
+            throw new HotelValidationException("Priority is required");
+        }
+        try {
+            IssuePriority.valueOf(request.getPriority().toUpperCase(Locale.ROOT));
+        } catch (Exception ex) {
+            throw new HotelValidationException("Priority must be CRITICAL, HIGH, NORMAL or LOW");
+        }
+        if (request.getSource() == null || !request.getSource().equalsIgnoreCase("HOUSEKEEPING")) {
+            throw new HotelValidationException("Internal issue source must be HOUSEKEEPING");
         }
     }
 }

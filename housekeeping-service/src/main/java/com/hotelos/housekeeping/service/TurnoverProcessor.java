@@ -6,6 +6,7 @@ import com.hotelos.common.event.MessagingConstants;
 import com.hotelos.common.event.RoutingKeys;
 import com.hotelos.common.event.payload.RoomHousekeepingStatusChangedPayload;
 import com.hotelos.common.event.payload.RoomVacatedPayload;
+import com.hotelos.common.util.CanonicalTime;
 import com.hotelos.housekeeping.domain.CleaningStatus;
 import com.hotelos.housekeeping.domain.HousekeepingStatus;
 import com.hotelos.housekeeping.domain.TaskSource;
@@ -111,17 +112,20 @@ public class TurnoverProcessor {
                 log.warn("Active TURNOVER cleaning task already exists for room {} with correlation {}, ignoring conflicting turnover request {}",
                         trimmedRoom, activeTask.getTurnoverCorrelationId(), trimmedCorrelation);
                 return false;
-            } else if (activeTask.getTaskSource() == TaskSource.MANUAL) {
-                log.info("Active MANUAL task exists for room {} in state {}, promoting to TURNOVER with correlation {}",
-                        trimmedRoom, activeTask.getTaskStatus(), trimmedCorrelation);
+            } else if (activeTask.getTaskSource() == TaskSource.MANUAL || activeTask.getTaskSource() == TaskSource.MAINTENANCE) {
+                log.info("Active {} task exists for room {} in state {}, promoting to TURNOVER with correlation {}",
+                        activeTask.getTaskSource(), trimmedRoom, activeTask.getTaskStatus(), trimmedCorrelation);
+                HousekeepingStatus targetStatus = activeTask.getTaskStatus() == CleaningStatus.WAITING
+                        ? HousekeepingStatus.DIRTY
+                        : HousekeepingStatus.CLEANING;
+                Instant now = CanonicalTime.now();
                 activeTask.promoteToTurnover(trimmedCorrelation);
                 cleaningTaskRepository.save(activeTask);
+                room.setHousekeepingStatus(targetStatus);
+                room.setCleanSince(null);
                 room.setActiveTurnoverCorrelationId(trimmedCorrelation);
+                room.setStatusChangedAt(now);
                 roomStateRepository.save(room);
-
-                String statusStr = activeTask.getTaskStatus() == CleaningStatus.WAITING
-                        ? HousekeepingStatus.DIRTY.name()
-                        : HousekeepingStatus.CLEANING.name();
 
                 outboxService.enqueue(
                         EventEnvelope.create(
@@ -129,7 +133,7 @@ public class TurnoverProcessor {
                                 "housekeeping-service",
                                 trimmedRoom,
                                 trimmedCorrelation,
-                                new RoomHousekeepingStatusChangedPayload(trimmedRoom, statusStr, room.getStatusChangedAt())
+                                new RoomHousekeepingStatusChangedPayload(trimmedRoom, targetStatus.name(), now)
                         ),
                         MessagingConstants.HOTEL_EXCHANGE,
                         RoutingKeys.ROOM_HOUSEKEEPING_CHANGED
@@ -139,7 +143,7 @@ public class TurnoverProcessor {
         }
 
         String cleaner = assignCleaner(trimmedRoom, cleaners);
-        Instant now = Instant.now();
+        Instant now = CanonicalTime.now();
         CleaningTaskEntity newTask = new CleaningTaskEntity(
                 UUID.randomUUID(),
                 trimmedRoom,

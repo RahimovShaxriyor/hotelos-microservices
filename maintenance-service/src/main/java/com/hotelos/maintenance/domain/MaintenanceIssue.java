@@ -14,19 +14,28 @@ public class MaintenanceIssue {
     private String assignedTechnician;
     private final Instant createdAt;
     private Instant updatedAt;
+    private final IssueSource source;
+    private final String sourceReferenceId;
+    private final boolean requiresCleaning;
+    private final EngineeringImpact engineeringImpact;
+    private final boolean cleanupPending;
+    private final Instant cleanupAcknowledgedAt;
 
     public MaintenanceIssue(String roomNumber, String description, IssuePriority priority) {
-        this.issueId = UUID.randomUUID().toString();
-        this.roomNumber = roomNumber;
-        this.description = description;
-        this.priority = priority;
-        this.status = IssueStatus.OPEN;
-        this.createdAt = Instant.now();
-        this.updatedAt = this.createdAt;
+        this(UUID.randomUUID().toString(), roomNumber, description, priority, IssueStatus.OPEN, null,
+                Instant.now(), Instant.now(), IssueSource.DIRECT, null, false, EngineeringImpact.OUT_OF_ORDER, false, null);
     }
 
     public MaintenanceIssue(String issueId, String roomNumber, String description, IssuePriority priority,
                             IssueStatus status, String assignedTechnician, Instant createdAt, Instant updatedAt) {
+        this(issueId, roomNumber, description, priority, status, assignedTechnician, createdAt, updatedAt,
+                IssueSource.DIRECT, null, false, EngineeringImpact.OUT_OF_ORDER, false, null);
+    }
+
+    public MaintenanceIssue(String issueId, String roomNumber, String description, IssuePriority priority,
+                            IssueStatus status, String assignedTechnician, Instant createdAt, Instant updatedAt,
+                            IssueSource source, String sourceReferenceId, boolean requiresCleaning,
+                            EngineeringImpact engineeringImpact, boolean cleanupPending, Instant cleanupAcknowledgedAt) {
         this.issueId = issueId;
         this.roomNumber = roomNumber;
         this.description = description;
@@ -35,6 +44,12 @@ public class MaintenanceIssue {
         this.assignedTechnician = assignedTechnician;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
+        this.source = source != null ? source : IssueSource.DIRECT;
+        this.sourceReferenceId = sourceReferenceId;
+        this.requiresCleaning = requiresCleaning;
+        this.engineeringImpact = engineeringImpact != null ? engineeringImpact : EngineeringImpact.OUT_OF_ORDER;
+        this.cleanupPending = cleanupPending;
+        this.cleanupAcknowledgedAt = cleanupAcknowledgedAt;
     }
 
     public static MaintenanceIssue fromEntity(MaintenanceIssueEntity entity) {
@@ -49,7 +64,13 @@ public class MaintenanceIssue {
                 entity.getStatus(),
                 entity.getAssignedTechnician(),
                 entity.getCreatedAt(),
-                entity.getUpdatedAt()
+                entity.getUpdatedAt(),
+                entity.getSource(),
+                entity.getSourceReferenceId(),
+                entity.isRequiresCleaning(),
+                entity.getEngineeringImpact(),
+                entity.isCleanupPending(),
+                entity.getCleanupAcknowledgedAt()
         );
     }
 
@@ -83,6 +104,30 @@ public class MaintenanceIssue {
 
     public Instant getUpdatedAt() {
         return updatedAt;
+    }
+
+    public IssueSource getSource() {
+        return source;
+    }
+
+    public String getSourceReferenceId() {
+        return sourceReferenceId;
+    }
+
+    public boolean isRequiresCleaning() {
+        return requiresCleaning;
+    }
+
+    public EngineeringImpact getEngineeringImpact() {
+        return engineeringImpact;
+    }
+
+    public boolean isCleanupPending() {
+        return cleanupPending;
+    }
+
+    public Instant getCleanupAcknowledgedAt() {
+        return cleanupAcknowledgedAt;
     }
 
     public void assign(String technicianName) {

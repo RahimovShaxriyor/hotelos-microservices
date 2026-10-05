@@ -21,6 +21,9 @@ public interface CleaningTaskRepository extends JpaRepository<CleaningTaskEntity
     @Query("SELECT t FROM CleaningTaskEntity t WHERE t.roomNumber = :roomNumber AND t.taskStatus IN (com.hotelos.housekeeping.domain.CleaningStatus.WAITING, com.hotelos.housekeeping.domain.CleaningStatus.CLEANING)")
     Optional<CleaningTaskEntity> findActiveTaskForUpdate(@Param("roomNumber") String roomNumber);
 
+    @Query("SELECT t FROM CleaningTaskEntity t WHERE t.roomNumber = :roomNumber AND t.taskStatus IN (com.hotelos.housekeeping.domain.CleaningStatus.WAITING, com.hotelos.housekeeping.domain.CleaningStatus.CLEANING)")
+    Optional<CleaningTaskEntity> findActiveTaskForRoom(@Param("roomNumber") String roomNumber);
+
     @Query("SELECT t FROM CleaningTaskEntity t WHERE t.taskStatus IN (com.hotelos.housekeeping.domain.CleaningStatus.WAITING, com.hotelos.housekeeping.domain.CleaningStatus.CLEANING) ORDER BY t.createdAt ASC, t.id ASC")
     List<CleaningTaskEntity> findActiveQueue();
 }

@@ -425,6 +425,12 @@ public class GatewayController {
         return get(housekeepingClient, "/api/housekeeping/queue");
     }
 
+    @Operation(summary = "Add room to housekeeping queue", tags = {"Housekeeping"})
+    @PostMapping("/api/housekeeping/queue/{roomNumber}")
+    public ResponseEntity<JsonNode> addToHousekeepingQueue(@PathVariable String roomNumber) {
+        return post(housekeepingClient, "/api/housekeeping/queue/" + roomNumber, null);
+    }
+
     @Operation(summary = "Start room cleaning", tags = {"Housekeeping"})
     @PostMapping("/api/housekeeping/rooms/{roomNumber}/start")
     public ResponseEntity<JsonNode> startCleaning(@PathVariable String roomNumber) {
@@ -435,6 +441,16 @@ public class GatewayController {
     @PostMapping("/api/housekeeping/rooms/{roomNumber}/clean")
     public ResponseEntity<JsonNode> markRoomClean(@PathVariable String roomNumber) {
         return post(housekeepingClient, "/api/housekeeping/rooms/" + roomNumber + "/clean", null);
+    }
+
+    @Operation(summary = "Report defect from housekeeping", tags = {"Housekeeping"})
+    @PostMapping(value = "/api/housekeeping/rooms/{roomNumber}/report-defect", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<JsonNode> reportDefect(
+            @PathVariable String roomNumber,
+            @RequestBody JsonNode request,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey
+    ) {
+        return postWithHeader(housekeepingClient, "/api/housekeeping/rooms/" + roomNumber + "/report-defect", request, "Idempotency-Key", idempotencyKey);
     }
 
     @Operation(summary = "Cancel housekeeping queue item", tags = {"Housekeeping"})
@@ -524,8 +540,19 @@ public class GatewayController {
 
     @Operation(summary = "Resolve maintenance issue", tags = {"Maintenance"})
     @PatchMapping("/api/maintenance/issues/{issueId}/resolve")
-    public ResponseEntity<JsonNode> resolveMaintenanceIssue(@PathVariable String issueId) {
-        return patch(maintenanceClient, "/api/maintenance/issues/" + issueId + "/resolve", null);
+    public ResponseEntity<JsonNode> resolveMaintenanceIssue(
+            @PathVariable String issueId,
+            @RequestBody(required = false) JsonNode request
+    ) {
+        return patch(maintenanceClient, "/api/maintenance/issues/" + issueId + "/resolve", request);
+    }
+
+    @PostMapping("/api/maintenance/issues/{issueId}/resolve")
+    public ResponseEntity<JsonNode> resolveMaintenanceIssuePost(
+            @PathVariable String issueId,
+            @RequestBody(required = false) JsonNode request
+    ) {
+        return post(maintenanceClient, "/api/maintenance/issues/" + issueId + "/resolve", request);
     }
 
     @Operation(summary = "Cancel maintenance issue", tags = {"Maintenance"})

@@ -1,5 +1,6 @@
 package com.hotelos.maintenance.persistence.repository;
 
+import com.hotelos.maintenance.domain.IssueSource;
 import com.hotelos.maintenance.persistence.entity.MaintenanceIssueEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -24,6 +25,14 @@ public interface MaintenanceIssueRepository extends JpaRepository<MaintenanceIss
 
     @Query("SELECT COUNT(i) FROM MaintenanceIssueEntity i WHERE i.roomNumber = :roomNumber AND i.status IN (com.hotelos.maintenance.domain.IssueStatus.OPEN, com.hotelos.maintenance.domain.IssueStatus.ASSIGNED)")
     long countActiveIssuesForRoom(@Param("roomNumber") String roomNumber);
+
+    @Query("SELECT i FROM MaintenanceIssueEntity i WHERE i.roomNumber = :roomNumber AND (" +
+           "i.status IN (com.hotelos.maintenance.domain.IssueStatus.OPEN, com.hotelos.maintenance.domain.IssueStatus.ASSIGNED) OR " +
+           "(i.status = com.hotelos.maintenance.domain.IssueStatus.RESOLVED AND i.cleanupPending = true)" +
+           ")")
+    List<MaintenanceIssueEntity> findBlockingIssuesForRoom(@Param("roomNumber") String roomNumber);
+
+    Optional<MaintenanceIssueEntity> findBySourceAndIdempotencyKey(IssueSource source, String idempotencyKey);
 
     @Query("SELECT i FROM MaintenanceIssueEntity i ORDER BY i.createdAt ASC")
     List<MaintenanceIssueEntity> findAllOrderedByCreatedAt();

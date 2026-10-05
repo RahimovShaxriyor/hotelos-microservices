@@ -10,5 +10,7 @@ public final class RoutingKeys {
     public static final String ROOM_SERVICE_CHARGE = "room.service.charge";
     public static final String ROOM_SERVICE_ORDER_UPDATED = "room.service.order.updated";
     public static final String MAINTENANCE_ISSUE_UPDATED = "maintenance.issue.updated";
+    public static final String MAINTENANCE_WORK_COMPLETED = "maintenance.work.completed";
+    public static final String MAINTENANCE_CLEANUP_COMPLETED = "housekeeping.maintenance.cleanup.completed";
     public static final String STAY_CHECKED_OUT = "reception.stay.checked_out";
 }

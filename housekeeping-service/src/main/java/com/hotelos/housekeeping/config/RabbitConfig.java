@@ -17,6 +17,7 @@ public class RabbitConfig {
     public static final String ROOM_VACATED = RoutingKeys.ROOM_VACATED;
     public static final String ROOM_HOUSEKEEPING_CHANGED = RoutingKeys.ROOM_HOUSEKEEPING_CHANGED;
     public static final String HOUSEKEEPING_ROOM_VACATED_QUEUE = "housekeeping.room.vacated";
+    public static final String HOUSEKEEPING_WORK_COMPLETED_QUEUE = "housekeeping.maintenance.work.completed";
 
     @Bean
     public TopicExchange hotelExchange() { return new TopicExchange(EXCHANGE, true, false); }
@@ -27,6 +28,18 @@ public class RabbitConfig {
     @Bean
     public Binding roomVacatedBinding(TopicExchange hotelExchange, Queue roomVacatedQueue) {
         return BindingBuilder.bind(roomVacatedQueue).to(hotelExchange).with(ROOM_VACATED);
+    }
+
+    @Bean
+    public Queue housekeepingWorkCompletedQueue() {
+        return QueueBuilder.durable(HOUSEKEEPING_WORK_COMPLETED_QUEUE).build();
+    }
+
+    @Bean
+    public Binding housekeepingWorkCompletedBinding(TopicExchange hotelExchange, Queue housekeepingWorkCompletedQueue) {
+        return BindingBuilder.bind(housekeepingWorkCompletedQueue)
+                .to(hotelExchange)
+                .with(RoutingKeys.MAINTENANCE_WORK_COMPLETED);
     }
 
     @Bean

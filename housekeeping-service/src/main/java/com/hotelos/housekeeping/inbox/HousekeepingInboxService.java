@@ -36,11 +36,14 @@ public class HousekeepingInboxService {
         }
 
         String incomingHash = EnvelopeFingerprint.computeSha256(envelope);
+        String source = (envelope.source() != null && !envelope.source().isBlank())
+                ? envelope.source().trim()
+                : "UNKNOWN";
 
         int inserted = inboxRepository.insertOnConflictDoNothing(
                 envelope.eventId(),
                 envelope.eventType(),
-                envelope.source(),
+                source,
                 envelope.aggregateId(),
                 envelope.correlationId(),
                 incomingHash
@@ -55,7 +58,7 @@ public class HousekeepingInboxService {
             HousekeepingInboxEventEntity existing = existingOpt.get();
             if (existing.getEnvelopeHash().equals(incomingHash)) {
                 log.info("Durable inbox duplicate detected for eventId {} ({}) from {}. Skipping business mutation.",
-                        envelope.eventId(), envelope.eventType(), envelope.source());
+                        envelope.eventId(), envelope.eventType(), source);
                 return InboxResult.DUPLICATE;
             } else {
                 log.error("DATA INCONSISTENCY: Conflicting payload received for existing eventId {}! Existing hash={}, incoming hash={}. Rejecting without mutation.",
@@ -73,10 +76,13 @@ public class HousekeepingInboxService {
             return;
         }
         String incomingHash = EnvelopeFingerprint.computeSha256(envelope);
+        String source = (envelope.source() != null && !envelope.source().isBlank())
+                ? envelope.source().trim()
+                : "UNKNOWN";
         inboxRepository.insertOnConflictDoNothing(
                 envelope.eventId(),
                 envelope.eventType(),
-                envelope.source(),
+                source,
                 envelope.aggregateId(),
                 envelope.correlationId(),
                 incomingHash

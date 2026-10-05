@@ -2,7 +2,7 @@ package com.hotelos.maintenance.config;
 
 import com.hotelos.common.event.MessagingConstants;
 import com.hotelos.common.event.RoutingKeys;
-import org.springframework.amqp.core.TopicExchange;
+import org.springframework.amqp.core.*;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.support.converter.Jackson2JavaTypeMapper;
@@ -16,9 +16,22 @@ public class RabbitConfig {
     public static final String EXCHANGE = MessagingConstants.HOTEL_EXCHANGE;
     public static final String MAINTENANCE_ISSUE_UPDATED = RoutingKeys.MAINTENANCE_ISSUE_UPDATED;
     public static final String ROOM_ENGINEERING_CHANGED = RoutingKeys.ROOM_ENGINEERING_CHANGED;
+    public static final String MAINTENANCE_CLEANUP_COMPLETED_QUEUE = "maintenance.cleanup.completed";
 
     @Bean
     public TopicExchange hotelExchange() { return new TopicExchange(EXCHANGE, true, false); }
+
+    @Bean
+    public Queue maintenanceCleanupCompletedQueue() {
+        return QueueBuilder.durable(MAINTENANCE_CLEANUP_COMPLETED_QUEUE).build();
+    }
+
+    @Bean
+    public Binding maintenanceCleanupCompletedBinding(TopicExchange hotelExchange, Queue maintenanceCleanupCompletedQueue) {
+        return BindingBuilder.bind(maintenanceCleanupCompletedQueue)
+                .to(hotelExchange)
+                .with(RoutingKeys.MAINTENANCE_CLEANUP_COMPLETED);
+    }
 
     @Bean
     public MessageConverter jsonMessageConverter() {

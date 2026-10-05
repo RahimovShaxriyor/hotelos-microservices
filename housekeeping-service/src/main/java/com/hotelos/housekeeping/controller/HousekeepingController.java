@@ -1,6 +1,10 @@
 package com.hotelos.housekeeping.controller;
 
 import com.hotelos.housekeeping.domain.CleaningTask;
+import com.hotelos.housekeeping.domain.MarkCleanResult;
+import com.hotelos.housekeeping.domain.MarkCleanStatus;
+import com.hotelos.housekeeping.dto.ReportDefectRequest;
+import com.hotelos.housekeeping.exception.ConflictException;
 import com.hotelos.housekeeping.service.HousekeepingService;
 import org.springframework.web.bind.annotation.*;
 
@@ -14,6 +18,15 @@ public class HousekeepingController {
 
     public HousekeepingController(HousekeepingService housekeepingService) {
         this.housekeepingService = housekeepingService;
+    }
+
+    @PostMapping("/rooms/{roomNumber}/report-defect")
+    public Map<String, Object> reportDefect(
+            @PathVariable String roomNumber,
+            @RequestBody ReportDefectRequest request,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey
+    ) {
+        return housekeepingService.reportDefect(roomNumber, request, idempotencyKey);
     }
 
     @GetMapping("/queue")
@@ -33,7 +46,12 @@ public class HousekeepingController {
 
     @PostMapping("/rooms/{roomNumber}/clean")
     public CleaningTask clean(@PathVariable String roomNumber) {
-        return housekeepingService.markClean(roomNumber);
+        MarkCleanResult result = housekeepingService.markClean(roomNumber);
+        if (result.status() == MarkCleanStatus.RESTART_REQUIRED) {
+            throw new ConflictException("MAINTENANCE_CLEANUP_NOT_COVERED",
+                    "Maintenance work was completed after current cleaning started. Room must be re-cleaned.");
+        }
+        return result.task();
     }
 
     @PatchMapping("/queue/{roomNumber}/cancel")

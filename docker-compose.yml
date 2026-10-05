@@ -97,6 +97,7 @@ services:
       HOUSEKEEPING_DB_USER: ${HOUSEKEEPING_DB_USER:-housekeeping_user}
       HOUSEKEEPING_DB_PASSWORD: ${HOUSEKEEPING_DB_PASSWORD:-housekeeping_dev_pass}
       HOTELOS_JWT_PUBLIC_KEY_PATH: /secrets/jwt-public.pem
+      MAINTENANCE_SERVICE_URL: http://maintenance-service:8084
     networks:
       - internal-app
       - internal-data
