@@ -19,6 +19,8 @@ public class Room {
     private Instant cleanSince;
     private boolean turnoverPending;
     private String turnoverCorrelationId;
+    private Instant occupancyChangedAt;
+    private Instant turnoverChangedAt;
 
     public Room(String roomNumber, int floor, RoomType type, String proximity, BigDecimal nightlyRate,
                 OccupancyStatus occupancyStatus, HousekeepingStatus housekeepingStatus, EngineeringStatus engineeringStatus,
@@ -29,6 +31,16 @@ public class Room {
     public Room(String roomNumber, int floor, RoomType type, String proximity, BigDecimal nightlyRate, String currency,
                 OccupancyStatus occupancyStatus, HousekeepingStatus housekeepingStatus, EngineeringStatus engineeringStatus,
                 Instant cleanSince, boolean turnoverPending, String turnoverCorrelationId) {
+        this(roomNumber, floor, type, proximity, nightlyRate, currency, occupancyStatus, housekeepingStatus, engineeringStatus,
+                cleanSince, turnoverPending, turnoverCorrelationId,
+                cleanSince != null ? cleanSince : Instant.now(),
+                cleanSince != null ? cleanSince : Instant.now());
+    }
+
+    public Room(String roomNumber, int floor, RoomType type, String proximity, BigDecimal nightlyRate, String currency,
+                OccupancyStatus occupancyStatus, HousekeepingStatus housekeepingStatus, EngineeringStatus engineeringStatus,
+                Instant cleanSince, boolean turnoverPending, String turnoverCorrelationId,
+                Instant occupancyChangedAt, Instant turnoverChangedAt) {
         this.roomNumber = roomNumber;
         this.floor = floor;
         this.type = type;
@@ -41,6 +53,8 @@ public class Room {
         this.cleanSince = cleanSince;
         this.turnoverPending = turnoverPending;
         this.turnoverCorrelationId = turnoverCorrelationId;
+        this.occupancyChangedAt = occupancyChangedAt != null ? occupancyChangedAt : Instant.now();
+        this.turnoverChangedAt = turnoverChangedAt != null ? turnoverChangedAt : Instant.now();
     }
 
     public static Room fromEntity(RoomEntity entity) {
@@ -57,7 +71,9 @@ public class Room {
                 entity.getEngineeringStatus(),
                 entity.getCleanSince(),
                 entity.isTurnoverPending(),
-                entity.getTurnoverCorrelationId()
+                entity.getTurnoverCorrelationId(),
+                entity.getOccupancyChangedAt(),
+                entity.getTurnoverChangedAt()
         );
     }
 
@@ -73,6 +89,8 @@ public class Room {
     public Instant getCleanSince() { return cleanSince; }
     public boolean isTurnoverPending() { return turnoverPending; }
     public String getTurnoverCorrelationId() { return turnoverCorrelationId; }
+    public Instant getOccupancyChangedAt() { return occupancyChangedAt; }
+    public Instant getTurnoverChangedAt() { return turnoverChangedAt; }
 
     public boolean isSellable() {
         return occupancyStatus == OccupancyStatus.VACANT
@@ -81,16 +99,30 @@ public class Room {
                 && !turnoverPending;
     }
 
-    public void occupy() {
+    public void occupy(Instant changedAt) {
+        Instant effectiveTime = changedAt != null ? changedAt : Instant.now();
         this.occupancyStatus = OccupancyStatus.OCCUPIED;
+        this.occupancyChangedAt = effectiveTime;
         this.turnoverPending = false;
         this.turnoverCorrelationId = null;
+        this.turnoverChangedAt = effectiveTime;
+    }
+
+    public void occupy() {
+        occupy(Instant.now());
+    }
+
+    public void vacate(String correlationId, Instant changedAt) {
+        Instant effectiveTime = changedAt != null ? changedAt : Instant.now();
+        this.occupancyStatus = OccupancyStatus.VACANT;
+        this.occupancyChangedAt = effectiveTime;
+        this.turnoverPending = true;
+        this.turnoverCorrelationId = correlationId;
+        this.turnoverChangedAt = effectiveTime;
     }
 
     public void vacate(String correlationId) {
-        this.occupancyStatus = OccupancyStatus.VACANT;
-        this.turnoverPending = true;
-        this.turnoverCorrelationId = correlationId;
+        vacate(correlationId, Instant.now());
     }
 
     public void applyHousekeepingStatus(HousekeepingStatus newStatus, Instant changedAt) {
@@ -98,13 +130,15 @@ public class Room {
     }
 
     public void applyHousekeepingStatus(HousekeepingStatus newStatus, Instant changedAt, String eventCorrelationId) {
+        Instant effectiveTime = changedAt != null ? changedAt : Instant.now();
         this.housekeepingStatus = newStatus;
         if (newStatus == HousekeepingStatus.CLEAN) {
-            this.cleanSince = changedAt;
+            this.cleanSince = effectiveTime;
             // turnoverPending is cleared ONLY by a confirmed CLEAN event from the current turnover cycle
             if (this.turnoverPending && this.turnoverCorrelationId != null && Objects.equals(this.turnoverCorrelationId, eventCorrelationId)) {
                 this.turnoverPending = false;
                 this.turnoverCorrelationId = null;
+                this.turnoverChangedAt = effectiveTime;
             }
         }
     }

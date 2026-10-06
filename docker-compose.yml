@@ -187,6 +187,9 @@ services:
       DASHBOARD_DB_PASSWORD: ${DASHBOARD_DB_PASSWORD:-dashboard_dev_pass}
       HOTELOS_JWT_PUBLIC_KEY_PATH: /secrets/jwt-public.pem
       HOTELOS_WS_ALLOWED_ORIGINS: ${HOTELOS_WS_ALLOWED_ORIGINS:-http://localhost:8085,http://localhost:8090,http://127.0.0.1:8085,http://127.0.0.1:8090}
+      HOTELOS_RECEPTION_URL: http://reception-service:8081
+      HOTELOS_HOUSEKEEPING_URL: http://housekeeping-service:8082
+      HOTELOS_MAINTENANCE_URL: http://maintenance-service:8084
     networks:
       - edge-net
       - internal-app

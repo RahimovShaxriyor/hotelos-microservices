@@ -595,6 +595,12 @@ public class GatewayController {
         return delete(dashboardClient, "/api/dashboard/events");
     }
 
+    @Operation(summary = "Trigger dashboard persistent read-model bootstrap", tags = {"Dashboard"})
+    @PostMapping("/api/dashboard/bootstrap")
+    public ResponseEntity<JsonNode> triggerDashboardBootstrap() {
+        return post(dashboardClient, "/api/dashboard/bootstrap", null);
+    }
+
     // -------------------------------------------------------------------------
     // Demo endpoints
     // -------------------------------------------------------------------------

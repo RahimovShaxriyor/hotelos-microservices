@@ -35,3 +35,7 @@ hotelos:
     audience: ${HOTELOS_JWT_AUDIENCE:hotelos-api}
   ws:
     allowed-origins: ${HOTELOS_WS_ALLOWED_ORIGINS:http://localhost:8085,http://localhost:8090,http://127.0.0.1:8085,http://127.0.0.1:8090}
+  services:
+    reception-url: ${HOTELOS_RECEPTION_URL:http://localhost:8081}
+    housekeeping-url: ${HOTELOS_HOUSEKEEPING_URL:http://localhost:8082}
+    maintenance-url: ${HOTELOS_MAINTENANCE_URL:http://localhost:8084}

@@ -74,6 +74,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/housekeeping/**").hasAnyRole("ADMIN", "MANAGER", "HOUSEKEEPING")
                         .requestMatchers("/api/room-service/**").hasAnyRole("ADMIN", "MANAGER", "ROOM_SERVICE")
                         .requestMatchers("/api/maintenance/**").hasAnyRole("ADMIN", "MANAGER", "MAINTENANCE")
+                        .requestMatchers(HttpMethod.POST, "/api/dashboard/bootstrap").hasRole("ADMIN")
                         .requestMatchers("/api/dashboard/**").hasAnyRole("ADMIN", "MANAGER")
                         // WebSocket tickets
                         .requestMatchers(HttpMethod.POST, "/api/ws/tickets/dashboard").hasAnyRole("ADMIN", "MANAGER")

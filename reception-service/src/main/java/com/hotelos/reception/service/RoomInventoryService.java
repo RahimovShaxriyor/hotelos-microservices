@@ -343,7 +343,8 @@ public class RoomInventoryService {
         if (!selected.isSellable()) {
             throw new ConflictException("NO_ROOM_READY", "Selected room is no longer ready for check-in");
         }
-        selected.occupy();
+        Instant checkedInAt = Instant.now();
+        selected.occupy(checkedInAt);
         roomRepository.save(selected);
 
         GuestStayEntity stay = new GuestStayEntity(
@@ -355,7 +356,7 @@ public class RoomInventoryService {
                 hotelToday,
                 request.getNights(),
                 selected.getNightlyRate(),
-                Instant.now()
+                checkedInAt
         );
         guestStayRepository.save(stay);
 
@@ -378,7 +379,7 @@ public class RoomInventoryService {
                 "reception-service",
                 selected.getRoomNumber(),
                 null,
-                new RoomOccupancyChangedPayload(selected.getRoomNumber(), selected.getOccupancyStatus().name(), Instant.now())
+                new RoomOccupancyChangedPayload(selected.getRoomNumber(), selected.getOccupancyStatus().name(), checkedInAt)
         );
         outboxService.enqueue(occupancyEvent, MessagingConstants.HOTEL_EXCHANGE, RoutingKeys.ROOM_OCCUPANCY_CHANGED);
 

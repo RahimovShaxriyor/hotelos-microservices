@@ -38,7 +38,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/dashboard/health").permitAll()
                         .requestMatchers("/ws/dashboard/**").permitAll()
                         .requestMatchers("/", "/index.html", "/favicon.ico", "/static/**").permitAll()
-                        .requestMatchers("/api/dashboard/dev/**").hasRole("ADMIN")
+                        .requestMatchers("/api/dashboard/bootstrap", "/api/dashboard/dev/**").hasRole("ADMIN")
                         .requestMatchers("/api/dashboard/**").hasAnyRole("ADMIN", "MANAGER")
                         .anyRequest().denyAll()
                 )

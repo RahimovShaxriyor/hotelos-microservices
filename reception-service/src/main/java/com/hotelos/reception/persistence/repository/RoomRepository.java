@@ -86,12 +86,13 @@ public interface RoomRepository extends JpaRepository<RoomEntity, String> {
     );
 
     @Modifying
-    @Query("UPDATE RoomEntity r SET r.housekeepingStatus = :status, r.cleanSince = :cleanSince, r.turnoverPending = false, r.turnoverCorrelationId = null WHERE r.roomNumber = :roomNumber AND r.turnoverPending = true AND r.turnoverCorrelationId = :correlationId")
+    @Query("UPDATE RoomEntity r SET r.housekeepingStatus = :status, r.cleanSince = :cleanSince, r.turnoverPending = false, r.turnoverCorrelationId = null, r.turnoverChangedAt = :turnoverChangedAt WHERE r.roomNumber = :roomNumber AND r.turnoverPending = true AND r.turnoverCorrelationId = :correlationId")
     int clearTurnoverPendingIfMatching(
             @Param("roomNumber") String roomNumber,
             @Param("status") HousekeepingStatus status,
             @Param("cleanSince") Instant cleanSince,
-            @Param("correlationId") String correlationId
+            @Param("correlationId") String correlationId,
+            @Param("turnoverChangedAt") Instant turnoverChangedAt
     );
 
     @Modifying

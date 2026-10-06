@@ -37,6 +37,7 @@ public class SecurityConfig {
                         .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                         .requestMatchers("/api/reception/dev/**").hasRole("ADMIN")
                         .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/reception/folios/*/adjustments").hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers("/api/reception/internal/rooms/snapshot").hasRole("ADMIN")
                         .requestMatchers("/api/reception/internal/**").hasAnyRole("ADMIN", "ROOM_SERVICE")
                         .requestMatchers("/api/reception/**").hasAnyRole("ADMIN", "MANAGER", "RECEPTIONIST")
                         .anyRequest().denyAll()

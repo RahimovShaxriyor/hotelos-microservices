@@ -55,6 +55,12 @@ public class RoomEntity {
     @Column(name = "turnover_correlation_id", length = 64)
     private String turnoverCorrelationId;
 
+    @Column(name = "occupancy_changed_at", nullable = false)
+    private Instant occupancyChangedAt;
+
+    @Column(name = "turnover_changed_at", nullable = false)
+    private Instant turnoverChangedAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -64,17 +70,30 @@ public class RoomEntity {
     public RoomEntity(String roomNumber, int floor, RoomType type, String proximity, BigDecimal nightlyRate,
                       OccupancyStatus occupancyStatus, HousekeepingStatus housekeepingStatus, EngineeringStatus engineeringStatus,
                       Instant cleanSince, boolean turnoverPending, String turnoverCorrelationId) {
+        this(roomNumber, floor, type, proximity, nightlyRate, "UZS", occupancyStatus, housekeepingStatus, engineeringStatus,
+                cleanSince, turnoverPending, turnoverCorrelationId,
+                cleanSince != null ? cleanSince : Instant.now(),
+                cleanSince != null ? cleanSince : Instant.now());
+    }
+
+    public RoomEntity(String roomNumber, int floor, RoomType type, String proximity, BigDecimal nightlyRate, String currency,
+                      OccupancyStatus occupancyStatus, HousekeepingStatus housekeepingStatus, EngineeringStatus engineeringStatus,
+                      Instant cleanSince, boolean turnoverPending, String turnoverCorrelationId,
+                      Instant occupancyChangedAt, Instant turnoverChangedAt) {
         this.roomNumber = roomNumber;
         this.floor = floor;
         this.type = type;
         this.proximity = proximity;
         this.nightlyRate = nightlyRate;
+        this.currency = currency != null ? currency : "UZS";
         this.occupancyStatus = occupancyStatus;
         this.housekeepingStatus = housekeepingStatus;
         this.engineeringStatus = engineeringStatus;
         this.cleanSince = cleanSince;
         this.turnoverPending = turnoverPending;
         this.turnoverCorrelationId = turnoverCorrelationId;
+        this.occupancyChangedAt = occupancyChangedAt != null ? occupancyChangedAt : Instant.now();
+        this.turnoverChangedAt = turnoverChangedAt != null ? turnoverChangedAt : Instant.now();
         this.createdAt = Instant.now();
     }
 
@@ -82,6 +101,12 @@ public class RoomEntity {
     protected void onCreate() {
         if (this.createdAt == null) {
             this.createdAt = Instant.now();
+        }
+        if (this.occupancyChangedAt == null) {
+            this.occupancyChangedAt = this.createdAt;
+        }
+        if (this.turnoverChangedAt == null) {
+            this.turnoverChangedAt = this.createdAt;
         }
     }
 
@@ -121,6 +146,12 @@ public class RoomEntity {
     public String getTurnoverCorrelationId() { return turnoverCorrelationId; }
     public void setTurnoverCorrelationId(String turnoverCorrelationId) { this.turnoverCorrelationId = turnoverCorrelationId; }
 
+    public Instant getOccupancyChangedAt() { return occupancyChangedAt; }
+    public void setOccupancyChangedAt(Instant occupancyChangedAt) { this.occupancyChangedAt = occupancyChangedAt; }
+
+    public Instant getTurnoverChangedAt() { return turnoverChangedAt; }
+    public void setTurnoverChangedAt(Instant turnoverChangedAt) { this.turnoverChangedAt = turnoverChangedAt; }
+
     public Instant getCreatedAt() { return createdAt; }
 
     public boolean isSellable() {
@@ -130,27 +161,43 @@ public class RoomEntity {
                 && !turnoverPending;
     }
 
-    public void occupy() {
+    public void occupy(Instant changedAt) {
+        Instant effectiveTime = changedAt != null ? changedAt : Instant.now();
         this.occupancyStatus = OccupancyStatus.OCCUPIED;
+        this.occupancyChangedAt = effectiveTime;
         this.turnoverPending = false;
         this.turnoverCorrelationId = null;
+        this.turnoverChangedAt = effectiveTime;
+    }
+
+    public void occupy() {
+        occupy(Instant.now());
+    }
+
+    public void vacate(String correlationId, Instant changedAt) {
+        Instant effectiveTime = changedAt != null ? changedAt : Instant.now();
+        this.occupancyStatus = OccupancyStatus.VACANT;
+        this.occupancyChangedAt = effectiveTime;
+        this.turnoverPending = true;
+        this.turnoverCorrelationId = correlationId;
+        this.turnoverChangedAt = effectiveTime;
     }
 
     public void vacate(String correlationId) {
-        this.occupancyStatus = OccupancyStatus.VACANT;
-        this.turnoverPending = true;
-        this.turnoverCorrelationId = correlationId;
+        vacate(correlationId, Instant.now());
     }
 
     public void applyHousekeepingStatus(HousekeepingStatus newStatus, Instant changedAt, String eventCorrelationId) {
+        Instant effectiveTime = changedAt != null ? changedAt : Instant.now();
         if (this.turnoverPending && this.turnoverCorrelationId != null) {
             // Under turnover: ONLY matching correlationId can transition to CLEAN and clear turnoverPending
             if (newStatus == HousekeepingStatus.CLEAN) {
                 if (Objects.equals(this.turnoverCorrelationId, eventCorrelationId)) {
                     this.housekeepingStatus = HousekeepingStatus.CLEAN;
-                    this.cleanSince = changedAt;
+                    this.cleanSince = effectiveTime;
                     this.turnoverPending = false;
                     this.turnoverCorrelationId = null;
+                    this.turnoverChangedAt = effectiveTime;
                 }
                 // Stale CLEAN with mismatched correlationId is completely ignored!
             } else {
@@ -162,7 +209,7 @@ public class RoomEntity {
             // Normal housekeeping update
             this.housekeepingStatus = newStatus;
             if (newStatus == HousekeepingStatus.CLEAN) {
-                this.cleanSince = changedAt;
+                this.cleanSince = effectiveTime;
             } else {
                 this.cleanSince = null;
             }

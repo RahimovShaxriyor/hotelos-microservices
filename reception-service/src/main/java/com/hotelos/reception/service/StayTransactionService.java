@@ -155,7 +155,7 @@ public class StayTransactionService {
         }
 
         Instant now = Instant.now(hotelClock);
-        room.occupy();
+        room.occupy(now);
         roomRepository.save(room);
 
         reservation.markCheckedIn(now);
@@ -365,11 +365,11 @@ public class StayTransactionService {
 
         // Vacate current room with turnover
         String turnoverCorrelationId = UUID.randomUUID().toString();
-        currentRoom.vacate(turnoverCorrelationId);
+        currentRoom.vacate(turnoverCorrelationId, changedAt);
         roomRepository.save(currentRoom);
 
         // Occupy target room
-        targetRoom.occupy();
+        targetRoom.occupy(changedAt);
         roomRepository.save(targetRoom);
 
         // Enqueue outbox events
@@ -459,7 +459,7 @@ public class StayTransactionService {
         guestStayRepository.save(stay);
 
         String turnoverCorrelationId = UUID.randomUUID().toString();
-        room.vacate(turnoverCorrelationId);
+        room.vacate(turnoverCorrelationId, checkedOutAt);
         roomRepository.save(room);
 
         BigDecimal rsCharges = roomServiceChargeRepository.sumChargesByStayId(stay.getId());
