@@ -30,6 +30,10 @@ public class UserEntity {
     @Column(name = "status", length = 20, nullable = false)
     private UserStatus status;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "account_type", length = 20, nullable = false)
+    private com.hotelos.identity.domain.AccountType accountType;
+
     @Column(name = "failed_login_attempts", nullable = false)
     private int failedLoginAttempts;
 
@@ -54,15 +58,16 @@ public class UserEntity {
     public UserEntity() {
     }
 
-    public UserEntity(UUID id, String username, String passwordHash, String fullName, UserStatus status, Instant now) {
-        this.id = id;
-        this.username = username;
-        this.passwordHash = passwordHash;
-        this.fullName = fullName;
-        this.status = status != null ? status : UserStatus.ACTIVE;
+    public UserEntity(UUID id, String username, String passwordHash, String fullName, UserStatus status, com.hotelos.identity.domain.AccountType accountType, Instant now) {
+        this.id = Objects.requireNonNull(id, "id must not be null");
+        this.username = Objects.requireNonNull(username, "username must not be null");
+        this.passwordHash = Objects.requireNonNull(passwordHash, "passwordHash must not be null");
+        this.fullName = Objects.requireNonNull(fullName, "fullName must not be null");
+        this.status = Objects.requireNonNull(status, "status must not be null");
+        this.accountType = Objects.requireNonNull(accountType, "accountType must not be null");
         this.failedLoginAttempts = 0;
         this.lockedUntil = null;
-        this.createdAt = now;
+        this.createdAt = Objects.requireNonNull(now, "now must not be null");
         this.updatedAt = now;
     }
 
@@ -104,6 +109,14 @@ public class UserEntity {
 
     public void setStatus(UserStatus status) {
         this.status = status;
+    }
+
+    public com.hotelos.identity.domain.AccountType getAccountType() {
+        return accountType;
+    }
+
+    public void setAccountType(com.hotelos.identity.domain.AccountType accountType) {
+        this.accountType = Objects.requireNonNull(accountType, "accountType must not be null");
     }
 
     public int getFailedLoginAttempts() {

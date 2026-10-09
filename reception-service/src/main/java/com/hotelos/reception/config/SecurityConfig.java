@@ -35,6 +35,7 @@ public class SecurityConfig {
                 .formLogin(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
                         .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/actuator/health").permitAll()
                         .requestMatchers("/api/reception/dev/**").hasRole("ADMIN")
                         .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/reception/folios/*/adjustments").hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers("/api/reception/internal/rooms/snapshot").hasRole("ADMIN")

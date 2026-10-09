@@ -63,7 +63,7 @@ public class SecurityConfig {
                         .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                         // Public endpoints
                         .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/refresh", "/api/auth/logout").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/gateway/health", "/api/gateway/info").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/gateway/health", "/api/gateway/info", "/actuator/health").permitAll()
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
                         // Admin-only management and dev/demo endpoints
                         .requestMatchers(HttpMethod.GET, "/api/gateway/routes").hasRole("ADMIN")

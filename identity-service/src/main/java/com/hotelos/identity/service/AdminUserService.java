@@ -53,7 +53,7 @@ public class AdminUserService {
         Instant now = Instant.now();
         String passwordHash = passwordEncoder.encode(rawPassword);
 
-        UserEntity user = new UserEntity(userId, normalizedUsername, passwordHash, fullName, UserStatus.ACTIVE, now);
+        UserEntity user = new UserEntity(userId, normalizedUsername, passwordHash, fullName, UserStatus.ACTIVE, com.hotelos.identity.domain.AccountType.STAFF, now);
         if (roles != null) {
             for (String role : roles) {
                 if (roleRepository.existsById(role)) {

@@ -46,3 +46,12 @@ hotelos:
     confirm-timeout-ms: 3000
   services:
     maintenance-url: ${MAINTENANCE_SERVICE_URL:http://localhost:8084}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "health"
+  endpoint:
+    health:
+      show-details: never

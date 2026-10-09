@@ -18,22 +18,38 @@ public class RestClientConfig {
 
     private static final List<String> SPOOFED_HEADERS = List.of(
             "X-User", "X-Username", "X-Role", "X-Roles",
-            "X-Authenticated-User", "X-Internal-User", "X-Internal-Role"
+            "X-Authenticated-User", "X-Internal-User", "X-Internal-Role",
+            "X-HotelOS-Client-IP"
     );
 
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(RestClientConfig.class);
 
     @Bean
-    public ClientHttpRequestInterceptor authHeaderForwardingInterceptor() {
+    public ClientHttpRequestInterceptor authHeaderForwardingInterceptor(com.hotelos.gateway.security.TrustedClientIpResolver ipResolver) {
         return (request, body, execution) -> {
             for (String spoofed : SPOOFED_HEADERS) {
                 request.getHeaders().remove(spoofed);
             }
-            if (!request.getURI().getPath().startsWith("/api/auth")) {
-                if (!request.getHeaders().containsKey(HttpHeaders.AUTHORIZATION)) {
-                    RequestAttributes attributes = RequestContextHolder.getRequestAttributes();
-                    if (attributes instanceof ServletRequestAttributes servletAttributes) {
-                        HttpServletRequest servletRequest = servletAttributes.getRequest();
+            RequestAttributes attributes = RequestContextHolder.getRequestAttributes();
+            if (attributes instanceof ServletRequestAttributes servletAttributes) {
+                HttpServletRequest servletRequest = servletAttributes.getRequest();
+
+                // 1. Resolve and set trusted client IP downstream
+                String trustedClientIp = ipResolver.resolveClientIp(servletRequest);
+                request.getHeaders().set("X-HotelOS-Client-IP", trustedClientIp);
+
+                // 2. Propagate Correlation ID
+                String correlationId = (String) servletRequest.getAttribute(com.hotelos.security.filter.CorrelationIdFilter.ATTRIBUTE_NAME);
+                if (correlationId == null) {
+                    correlationId = servletRequest.getHeader(com.hotelos.security.filter.CorrelationIdFilter.HEADER_NAME);
+                }
+                if (correlationId != null && !correlationId.isBlank()) {
+                    request.getHeaders().set(com.hotelos.security.filter.CorrelationIdFilter.HEADER_NAME, correlationId);
+                }
+
+                // 3. Propagate auth header for non-auth endpoints
+                if (!request.getURI().getPath().startsWith("/api/auth")) {
+                    if (!request.getHeaders().containsKey(HttpHeaders.AUTHORIZATION)) {
                         String authHeader = servletRequest.getHeader(HttpHeaders.AUTHORIZATION);
                         if (authHeader != null && authHeader.startsWith("Bearer ")) {
                             request.getHeaders().set(HttpHeaders.AUTHORIZATION, authHeader);

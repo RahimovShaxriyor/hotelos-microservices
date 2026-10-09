@@ -11,6 +11,7 @@ proxy_set_header X-Forwarded-For $remote_addr;
 proxy_set_header X-Forwarded-Proto $scheme;
 proxy_set_header X-Forwarded-Host $host;
 proxy_set_header X-Forwarded-Port $server_port;
+proxy_set_header X-HotelOS-Client-IP "";
 
 # Swagger / OpenAPI lockdown for production
 location /swagger-ui/ {
@@ -27,7 +28,7 @@ location = /v3/api-docs {
 }
 
 # Actuator lockdown
-location /actuator/ {
+location ^~ /actuator {
     return 404;
 }
 

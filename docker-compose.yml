@@ -72,7 +72,7 @@ services:
       - internal-app
       - internal-data
     healthcheck:
-      test: ["CMD-SHELL", "curl -s -o /dev/null -w '%{http_code}' http://localhost:8081/api/rooms | grep -qE '200|401|403' || exit 1"]
+      test: ["CMD-SHELL", "curl -f -s http://localhost:8081/actuator/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -102,7 +102,7 @@ services:
       - internal-app
       - internal-data
     healthcheck:
-      test: ["CMD-SHELL", "curl -s -o /dev/null -w '%{http_code}' http://localhost:8082/api/housekeeping/tasks | grep -qE '200|401|403' || exit 1"]
+      test: ["CMD-SHELL", "curl -f -s http://localhost:8082/actuator/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -132,7 +132,7 @@ services:
       - internal-app
       - internal-data
     healthcheck:
-      test: ["CMD-SHELL", "curl -s -o /dev/null -w '%{http_code}' http://localhost:8083/api/room-service/orders | grep -qE '200|401|403' || exit 1"]
+      test: ["CMD-SHELL", "curl -f -s http://localhost:8083/actuator/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -161,7 +161,7 @@ services:
       - internal-app
       - internal-data
     healthcheck:
-      test: ["CMD-SHELL", "curl -s -o /dev/null -w '%{http_code}' http://localhost:8084/api/maintenance/issues | grep -qE '200|401|403' || exit 1"]
+      test: ["CMD-SHELL", "curl -f -s http://localhost:8084/actuator/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -195,7 +195,7 @@ services:
       - internal-app
       - internal-data
     healthcheck:
-      test: ["CMD-SHELL", "curl -f -s http://localhost:8085/api/dashboard/health || exit 1"]
+      test: ["CMD-SHELL", "curl -f -s http://localhost:8085/actuator/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -223,7 +223,7 @@ services:
       - internal-app
       - internal-data
     healthcheck:
-      test: ["CMD-SHELL", "curl -f -s http://localhost:8086/api/identity/health || exit 1"]
+      test: ["CMD-SHELL", "curl -f -s http://localhost:8086/actuator/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -261,7 +261,7 @@ services:
       - edge-net
       - internal-app
     healthcheck:
-      test: ["CMD-SHELL", "curl -f -s http://localhost:8090/api/gateway/health || exit 1"]
+      test: ["CMD-SHELL", "curl -f -s http://localhost:8090/actuator/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10

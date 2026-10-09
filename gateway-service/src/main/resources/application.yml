@@ -1,7 +1,7 @@
 server:
   port: 8090
   shutdown: graceful
-  forward-headers-strategy: framework
+  forward-headers-strategy: none
   error:
     include-stacktrace: never
     include-message: never
@@ -37,3 +37,14 @@ hotelos:
     maintenance-url: ${MAINTENANCE_SERVICE_URL:http://localhost:8084}
     dashboard-url: ${DASHBOARD_SERVICE_URL:http://localhost:8085}
     identity-url: ${IDENTITY_SERVICE_URL:http://localhost:8086}
+  gateway:
+    trusted-proxies: ${HOTELOS_GATEWAY_TRUSTED_PROXIES:edge,nginx}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "health"
+  endpoint:
+    health:
+      show-details: never

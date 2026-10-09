@@ -1,6 +1,7 @@
 server:
   port: 8086
   shutdown: graceful
+  forward-headers-strategy: none
   error:
     include-stacktrace: never
     include-message: never
@@ -55,3 +56,14 @@ hotelos:
     admin:
       username: ${HOTELOS_BOOTSTRAP_ADMIN_USERNAME:}
       password: ${HOTELOS_BOOTSTRAP_ADMIN_PASSWORD:}
+  identity:
+    trusted-proxies: ${HOTELOS_IDENTITY_TRUSTED_PROXIES:gateway-service,gateway}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "health"
+  endpoint:
+    health:
+      show-details: never

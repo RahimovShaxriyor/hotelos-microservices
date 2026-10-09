@@ -1,6 +1,8 @@
 package com.hotelos.security.web;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.hotelos.common.dto.error.ApiErrorResponse;
+import com.hotelos.security.filter.CorrelationIdFilter;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
@@ -10,8 +12,6 @@ import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.web.AuthenticationEntryPoint;
 
 import java.io.IOException;
-import java.util.LinkedHashMap;
-import java.util.Map;
 
 public class RestAuthenticationEntryPoint implements AuthenticationEntryPoint {
 
@@ -27,9 +27,20 @@ public class RestAuthenticationEntryPoint implements AuthenticationEntryPoint {
         log.warn("Unauthorized request to [{}]: {}", request.getRequestURI(), authException.getMessage());
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-        Map<String, String> body = new LinkedHashMap<>();
-        body.put("error", "Unauthorized");
-        body.put("message", "Authentication required");
+
+        String correlationId = (String) request.getAttribute(CorrelationIdFilter.ATTRIBUTE_NAME);
+        if (correlationId == null) {
+            correlationId = response.getHeader(CorrelationIdFilter.HEADER_NAME);
+        }
+
+        ApiErrorResponse body = ApiErrorResponse.of(
+                "UNAUTHORIZED",
+                401,
+                "Authentication required",
+                "Unauthorized",
+                correlationId,
+                request.getRequestURI()
+        );
         objectMapper.writeValue(response.getOutputStream(), body);
     }
 }

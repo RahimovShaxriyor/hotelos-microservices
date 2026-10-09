@@ -29,9 +29,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
 
     private final AuthService authService;
+    private final com.hotelos.identity.security.TrustedGatewayIpResolver trustedGatewayIpResolver;
 
-    public AuthController(AuthService authService) {
+    public AuthController(AuthService authService, com.hotelos.identity.security.TrustedGatewayIpResolver trustedGatewayIpResolver) {
         this.authService = authService;
+        this.trustedGatewayIpResolver = trustedGatewayIpResolver;
     }
 
     @Operation(summary = "Staff login", description = "Authenticate staff credentials and issue access token with refresh token")
@@ -43,7 +45,7 @@ public class AuthController {
     })
     @PostMapping(value = "/login", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<LoginResponse> login(@RequestBody LoginRequest request, HttpServletRequest httpRequest) {
-        String ipAddress = httpRequest.getRemoteAddr();
+        String ipAddress = extractClientIp(httpRequest);
         LoginResponse response = authService.login(request, ipAddress);
         return ResponseEntity.ok(response);
     }
@@ -57,7 +59,7 @@ public class AuthController {
     })
     @PostMapping(value = "/refresh", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<RefreshResponse> refresh(@RequestBody RefreshRequest request, HttpServletRequest httpRequest) {
-        String ipAddress = httpRequest.getRemoteAddr();
+        String ipAddress = extractClientIp(httpRequest);
         RefreshResponse response = authService.refresh(request, ipAddress);
         return ResponseEntity.ok(response);
     }
@@ -69,9 +71,13 @@ public class AuthController {
     @PostMapping(value = "/logout", consumes = MediaType.APPLICATION_JSON_VALUE)
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public ResponseEntity<Void> logout(@RequestBody LogoutRequest request, HttpServletRequest httpRequest) {
-        String ipAddress = httpRequest.getRemoteAddr();
+        String ipAddress = extractClientIp(httpRequest);
         authService.logout(request, ipAddress);
         return ResponseEntity.noContent().build();
+    }
+
+    private String extractClientIp(HttpServletRequest request) {
+        return trustedGatewayIpResolver.resolveClientIp(request);
     }
 }
 

@@ -67,6 +67,7 @@ public class AdminBootstrapService {
                 passwordHash,
                 "System Administrator",
                 UserStatus.ACTIVE,
+                com.hotelos.identity.domain.AccountType.STAFF,
                 now
         );
         admin.addRole("ADMIN");

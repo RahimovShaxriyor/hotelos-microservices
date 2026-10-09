@@ -35,7 +35,7 @@ public class SecurityConfig {
                 .formLogin(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
                         .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
-                        .requestMatchers("/api/dashboard/health").permitAll()
+                        .requestMatchers("/api/dashboard/health", "/actuator/health").permitAll()
                         .requestMatchers("/ws/dashboard/**").permitAll()
                         .requestMatchers("/", "/index.html", "/favicon.ico", "/static/**").permitAll()
                         .requestMatchers("/api/dashboard/bootstrap", "/api/dashboard/dev/**").hasRole("ADMIN")

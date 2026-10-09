@@ -55,6 +55,12 @@ public class JwtSecurityConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
+    public com.hotelos.security.filter.CorrelationIdFilter correlationIdFilter() {
+        return new com.hotelos.security.filter.CorrelationIdFilter();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
     public JwtDecoder jwtDecoder(RsaPublicKeyProvider keyProvider) {
         NimbusJwtDecoder jwtDecoder = NimbusJwtDecoder.withPublicKey(keyProvider.getPublicKey())
                 .signatureAlgorithm(SignatureAlgorithm.RS256)
@@ -64,12 +70,14 @@ public class JwtSecurityConfiguration {
         OAuth2TokenValidator<Jwt> issuerValidator = new IssuerValidator(keyProvider.getIssuer());
         OAuth2TokenValidator<Jwt> audienceValidator = new AudienceValidator(keyProvider.getAudience());
         OAuth2TokenValidator<Jwt> kidValidator = new KidValidator(keyProvider.getKeyId());
+        OAuth2TokenValidator<Jwt> accountTypeValidator = new com.hotelos.security.validator.AccountTypeValidator("STAFF");
 
         OAuth2TokenValidator<Jwt> delegatingValidator = new DelegatingOAuth2TokenValidator<>(
                 timestampValidator,
                 issuerValidator,
                 audienceValidator,
-                kidValidator
+                kidValidator,
+                accountTypeValidator
         );
 
         jwtDecoder.setJwtValidator(delegatingValidator);

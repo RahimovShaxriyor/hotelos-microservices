@@ -44,6 +44,7 @@ public class TokenService {
             payload.put("iss", ISSUER);
             payload.put("aud", AUDIENCE);
             payload.put("sub", user.getId().toString());
+            payload.put("account_type", java.util.Objects.requireNonNull(user.getAccountType(), "user accountType must not be null").name());
             payload.put("username", user.getUsername());
             payload.put("roles", new ArrayList<>(user.getRoles()));
             payload.put("iat", now.getEpochSecond());
