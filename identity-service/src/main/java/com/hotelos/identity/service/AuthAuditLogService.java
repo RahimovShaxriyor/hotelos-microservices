@@ -43,4 +43,29 @@ public class AuthAuditLogService {
         );
         repository.save(entity);
     }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void recordGovernanceEvent(
+            String eventType,
+            UUID actorUserId,
+            UUID targetUserId,
+            String targetEmail,
+            String correlationId,
+            String username,
+            String ipAddress,
+            String details
+    ) {
+        AuthAuditLogEntity entity = new AuthAuditLogEntity(
+                eventType,
+                actorUserId,
+                targetUserId,
+                targetEmail,
+                correlationId,
+                username,
+                ipAddress,
+                details,
+                Instant.now()
+        );
+        repository.save(entity);
+    }
 }

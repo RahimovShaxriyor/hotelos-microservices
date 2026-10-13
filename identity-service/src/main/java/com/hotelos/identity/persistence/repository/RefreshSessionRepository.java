@@ -27,11 +27,11 @@ public interface RefreshSessionRepository extends JpaRepository<RefreshSessionEn
 
     List<RefreshSessionEntity> findByUserId(UUID userId);
 
-    @Modifying(clearAutomatically = true)
+    @Modifying
     @Query("UPDATE RefreshSessionEntity s SET s.revokedAt = :now WHERE s.familyId = :familyId AND s.revokedAt IS NULL")
     int revokeFamily(@Param("familyId") UUID familyId, @Param("now") Instant now);
 
-    @Modifying(clearAutomatically = true)
+    @Modifying
     @Query("UPDATE RefreshSessionEntity s SET s.revokedAt = :now WHERE s.userId = :userId AND s.revokedAt IS NULL")
     int revokeAllForUser(@Param("userId") UUID userId, @Param("now") Instant now);
 }

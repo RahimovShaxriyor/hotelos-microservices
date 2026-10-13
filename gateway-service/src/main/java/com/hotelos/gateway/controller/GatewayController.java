@@ -90,6 +90,7 @@ public class GatewayController {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("gateway", "/api/gateway/**");
         body.put("auth", "/api/auth/**");
+        body.put("admin", "/api/admin/**");
         body.put("reception", serviceUrls.receptionUrl() + "/api/reception/**");
         body.put("housekeeping", serviceUrls.housekeepingUrl() + "/api/housekeeping/**");
         body.put("roomService", serviceUrls.roomServiceUrl() + "/api/room-service/**");
@@ -122,6 +123,104 @@ public class GatewayController {
                 .body(request)
                 .retrieve()
                 .toBodilessEntity();
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "Accept staff invitation", description = "Accept staff invitation and activate account with password", tags = {"Authentication"}, security = {})
+    @PostMapping(value = "/api/auth/invitations/accept", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<JsonNode> acceptInvitation(@RequestBody JsonNode request) {
+        return post(identityClient, "/api/auth/invitations/accept", request);
+    }
+
+    // -------------------------------------------------------------------------
+    // Staff Administration & Governance
+    // -------------------------------------------------------------------------
+    @Operation(summary = "List staff accounts", description = "Query paged staff users with optional filters", tags = {"Staff Administration"})
+    @GetMapping(value = "/api/admin/users", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<JsonNode> listStaffUsers(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String role,
+            @RequestParam(required = false) String search,
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader
+    ) {
+        UriComponentsBuilder builder = UriComponentsBuilder.fromPath("/api/admin/users")
+                .queryParam("page", page)
+                .queryParam("size", size);
+        if (status != null && !status.isBlank()) builder.queryParam("status", status.trim());
+        if (role != null && !role.isBlank()) builder.queryParam("role", role.trim());
+        if (search != null && !search.isBlank()) builder.queryParam("search", search.trim());
+        return getWithAuth(identityClient, builder.toUriString(), authHeader);
+    }
+
+    @Operation(summary = "Get staff account detail", description = "Retrieve staff user detail by id", tags = {"Staff Administration"})
+    @GetMapping(value = "/api/admin/users/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<JsonNode> getStaffUserDetail(
+            @PathVariable UUID id,
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader
+    ) {
+        return getWithAuth(identityClient, "/api/admin/users/" + id, authHeader);
+    }
+
+    @Operation(summary = "Create staff invitation", description = "Issue a new staff invitation", tags = {"Staff Administration"})
+    @PostMapping(value = "/api/admin/users/invitations", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<JsonNode> createStaffInvitation(
+            @RequestBody JsonNode request,
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader
+    ) {
+        return postWithAuth(identityClient, "/api/admin/users/invitations", request, authHeader);
+    }
+
+    @Operation(summary = "Resend staff invitation", description = "Invalidate existing invitation and create replacement", tags = {"Staff Administration"})
+    @PostMapping(value = "/api/admin/users/invitations/{id}/resend", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<JsonNode> resendStaffInvitation(
+            @PathVariable UUID id,
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader
+    ) {
+        return postWithAuth(identityClient, "/api/admin/users/invitations/" + id + "/resend", null, authHeader);
+    }
+
+    @Operation(summary = "Disable staff account", description = "Disable staff user and revoke sessions", tags = {"Staff Administration"})
+    @PostMapping(value = "/api/admin/users/{id}/disable", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<JsonNode> disableStaffUser(
+            @PathVariable UUID id,
+            @RequestBody(required = false) JsonNode request,
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader
+    ) {
+        return postWithAuth(identityClient, "/api/admin/users/" + id + "/disable", request, authHeader);
+    }
+
+    @Operation(summary = "Enable staff account", description = "Enable staff user", tags = {"Staff Administration"})
+    @PostMapping(value = "/api/admin/users/{id}/enable", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<JsonNode> enableStaffUser(
+            @PathVariable UUID id,
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader
+    ) {
+        return postWithAuth(identityClient, "/api/admin/users/" + id + "/enable", null, authHeader);
+    }
+
+    @Operation(summary = "Update staff roles", description = "Replace roles for staff user", tags = {"Staff Administration"})
+    @PutMapping(value = "/api/admin/users/{id}/roles", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<JsonNode> updateStaffRoles(
+            @PathVariable UUID id,
+            @RequestBody JsonNode request,
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader
+    ) {
+        return putWithAuth(identityClient, "/api/admin/users/" + id + "/roles", request, authHeader);
+    }
+
+    @Operation(summary = "Revoke staff sessions", description = "Revoke refresh sessions for staff user", tags = {"Staff Administration"})
+    @PostMapping(value = "/api/admin/users/{id}/revoke-sessions")
+    public ResponseEntity<Void> revokeStaffSessions(
+            @PathVariable UUID id,
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader
+    ) {
+        RestClient.RequestBodySpec request = identityClient.post().uri("/api/admin/users/" + id + "/revoke-sessions");
+        if (authHeader != null && !authHeader.isBlank()) {
+            request.header(HttpHeaders.AUTHORIZATION, authHeader);
+        }
+        request.retrieve().toBodilessEntity();
         return ResponseEntity.noContent().build();
     }
 
@@ -906,6 +1005,24 @@ public class GatewayController {
 
     private ResponseEntity<JsonNode> postWithAuth(RestClient client, String uri, Object body, String authHeader) {
         RestClient.RequestBodySpec request = client.post().uri(uri);
+        if (authHeader != null && !authHeader.isBlank()) {
+            request.header(HttpHeaders.AUTHORIZATION, authHeader);
+        }
+        ResponseEntity<JsonNode> downstream;
+        if (body == null) {
+            downstream = request.retrieve().toEntity(JsonNode.class);
+        } else {
+            downstream = request
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .toEntity(JsonNode.class);
+        }
+        return cleanGatewayResponse(downstream);
+    }
+
+    private ResponseEntity<JsonNode> putWithAuth(RestClient client, String uri, Object body, String authHeader) {
+        RestClient.RequestBodySpec request = client.put().uri(uri);
         if (authHeader != null && !authHeader.isBlank()) {
             request.header(HttpHeaders.AUTHORIZATION, authHeader);
         }

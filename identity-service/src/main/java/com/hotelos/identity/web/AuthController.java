@@ -1,12 +1,8 @@
 package com.hotelos.identity.web;
 
-import com.hotelos.identity.dto.LoginErrorResponse;
-import com.hotelos.identity.dto.LoginRequest;
-import com.hotelos.identity.dto.LoginResponse;
-import com.hotelos.identity.dto.LogoutRequest;
-import com.hotelos.identity.dto.RefreshRequest;
-import com.hotelos.identity.dto.RefreshResponse;
+import com.hotelos.identity.dto.*;
 import com.hotelos.identity.service.AuthService;
+import com.hotelos.identity.service.StaffInvitationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -23,16 +19,22 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
-@Tag(name = "Authentication", description = "Staff authentication and token operations")
+@Tag(name = "Authentication", description = "Staff authentication, token operations, and invitation acceptance")
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
 
     private final AuthService authService;
+    private final StaffInvitationService staffInvitationService;
     private final com.hotelos.identity.security.TrustedGatewayIpResolver trustedGatewayIpResolver;
 
-    public AuthController(AuthService authService, com.hotelos.identity.security.TrustedGatewayIpResolver trustedGatewayIpResolver) {
+    public AuthController(
+            AuthService authService,
+            StaffInvitationService staffInvitationService,
+            com.hotelos.identity.security.TrustedGatewayIpResolver trustedGatewayIpResolver
+    ) {
         this.authService = authService;
+        this.staffInvitationService = staffInvitationService;
         this.trustedGatewayIpResolver = trustedGatewayIpResolver;
     }
 
@@ -76,8 +78,23 @@ public class AuthController {
         return ResponseEntity.noContent().build();
     }
 
+    @Operation(summary = "Accept staff invitation", description = "Accept staff invitation and activate account with password")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "201", description = "Invitation accepted successfully",
+                    content = @Content(schema = @Schema(implementation = StaffUserSummaryResponse.class))),
+            @ApiResponse(responseCode = "400", description = "Invalid or expired invitation token"),
+            @ApiResponse(responseCode = "409", description = "Invitation already accepted or username conflict")
+    })
+    @PostMapping(value = "/invitations/accept", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<StaffUserSummaryResponse> acceptInvitation(
+            @RequestBody AcceptInvitationRequest request,
+            HttpServletRequest httpRequest
+    ) {
+        StaffUserSummaryResponse response = staffInvitationService.acceptInvitation(request, httpRequest);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
     private String extractClientIp(HttpServletRequest request) {
         return trustedGatewayIpResolver.resolveClientIp(request);
     }
 }
-

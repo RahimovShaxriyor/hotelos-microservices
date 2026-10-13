@@ -62,9 +62,16 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                         // Public endpoints
-                        .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/refresh", "/api/auth/logout").permitAll()
+                        .requestMatchers(HttpMethod.POST,
+                                "/api/auth/login",
+                                "/api/auth/refresh",
+                                "/api/auth/logout",
+                                "/api/auth/invitations/accept"
+                        ).permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/gateway/health", "/api/gateway/info", "/actuator/health").permitAll()
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
+                        // Admin & Owner staff governance endpoints
+                        .requestMatchers("/api/admin/users/**").hasAnyRole("ADMIN", "OWNER")
                         // Admin-only management and dev/demo endpoints
                         .requestMatchers(HttpMethod.GET, "/api/gateway/routes").hasRole("ADMIN")
                         .requestMatchers("/api/demo/**").hasRole("ADMIN")

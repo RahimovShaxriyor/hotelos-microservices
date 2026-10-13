@@ -21,7 +21,19 @@ public class AuthAuditLogEntity {
     @Column(name = "user_id")
     private UUID userId;
 
-    @Column(name = "username", length = 64, nullable = false)
+    @Column(name = "actor_user_id")
+    private UUID actorUserId;
+
+    @Column(name = "target_user_id")
+    private UUID targetUserId;
+
+    @Column(name = "target_email", length = 254)
+    private String targetEmail;
+
+    @Column(name = "correlation_id", length = 64)
+    private String correlationId;
+
+    @Column(name = "username", length = 254)
     private String username;
 
     @Column(name = "ip_address", length = 45)
@@ -39,6 +51,29 @@ public class AuthAuditLogEntity {
     public AuthAuditLogEntity(String eventType, UUID userId, String username, String ipAddress, String details, Instant createdAt) {
         this.eventType = eventType;
         this.userId = userId;
+        this.username = username;
+        this.ipAddress = ipAddress;
+        this.details = details;
+        this.createdAt = createdAt;
+    }
+
+    public AuthAuditLogEntity(
+            String eventType,
+            UUID actorUserId,
+            UUID targetUserId,
+            String targetEmail,
+            String correlationId,
+            String username,
+            String ipAddress,
+            String details,
+            Instant createdAt
+    ) {
+        this.eventType = eventType;
+        this.actorUserId = actorUserId;
+        this.targetUserId = targetUserId;
+        this.userId = targetUserId != null ? targetUserId : actorUserId;
+        this.targetEmail = targetEmail;
+        this.correlationId = correlationId;
         this.username = username;
         this.ipAddress = ipAddress;
         this.details = details;
@@ -67,6 +102,38 @@ public class AuthAuditLogEntity {
 
     public void setUserId(UUID userId) {
         this.userId = userId;
+    }
+
+    public UUID getActorUserId() {
+        return actorUserId;
+    }
+
+    public void setActorUserId(UUID actorUserId) {
+        this.actorUserId = actorUserId;
+    }
+
+    public UUID getTargetUserId() {
+        return targetUserId;
+    }
+
+    public void setTargetUserId(UUID targetUserId) {
+        this.targetUserId = targetUserId;
+    }
+
+    public String getTargetEmail() {
+        return targetEmail;
+    }
+
+    public void setTargetEmail(String targetEmail) {
+        this.targetEmail = targetEmail;
+    }
+
+    public String getCorrelationId() {
+        return correlationId;
+    }
+
+    public void setCorrelationId(String correlationId) {
+        this.correlationId = correlationId;
     }
 
     public String getUsername() {
