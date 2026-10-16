@@ -15,8 +15,12 @@ spring:
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
-    operations-sorter: method
+    operations-sorter: alpha
     tags-sorter: alpha
+    doc-expansion: none
+    filter: true
+    display-operation-id: true
+    display-request-duration: true
     enabled: ${HOTELOS_SWAGGER_ENABLED:true}
   api-docs:
     path: /v3/api-docs

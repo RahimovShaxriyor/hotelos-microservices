@@ -1,11 +1,11 @@
 package com.hotelos.gateway.controller;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import java.net.URI;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.hotelos.common.dto.guest.CreateGuestRequest;
+import com.hotelos.common.dto.guest.GuestProfileResponse;
 import com.hotelos.common.dto.guest.UpdateGuestRequest;
 import com.hotelos.gateway.config.ServiceUrls;
 import com.hotelos.gateway.dto.CheckInRequest;
@@ -15,7 +15,14 @@ import com.hotelos.gateway.dto.GatewayHealthResponse;
 import com.hotelos.gateway.dto.LoginRequest;
 import com.hotelos.gateway.dto.LogoutRequest;
 import com.hotelos.gateway.dto.RefreshRequest;
+import com.hotelos.gateway.openapi.schema.*;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.ArraySchema;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpHeaders;
@@ -26,6 +33,7 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import java.net.URI;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -64,15 +72,31 @@ public class GatewayController {
     }
 
     // -------------------------------------------------------------------------
-    // Gateway
+    // System / Gateway
     // -------------------------------------------------------------------------
-    @Operation(summary = "Gateway health check", tags = {"Gateway"}, security = {})
+    @Operation(
+            operationId = "getGatewayHealth",
+            summary = "Gateway health check",
+            tags = {"System"},
+            description = "Public"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "UP", content = @Content(schema = @Schema(implementation = GatewayHealthResponse.class)))
+    })
     @GetMapping("/api/gateway/health")
     public GatewayHealthResponse health() {
         return new GatewayHealthResponse("UP", "gateway-service", "/swagger-ui.html");
     }
 
-    @Operation(summary = "Gateway information", tags = {"Gateway"}, security = {})
+    @Operation(
+            operationId = "getGatewayInfo",
+            summary = "Gateway information",
+            tags = {"System"},
+            description = "Public"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Gateway metadata")
+    })
     @GetMapping("/api/gateway/info")
     public Map<String, Object> info() {
         Map<String, Object> body = new LinkedHashMap<>();
@@ -84,7 +108,15 @@ public class GatewayController {
         return body;
     }
 
-    @Operation(summary = "List gateway routes", tags = {"Gateway"})
+    @Operation(
+            operationId = "listGatewayRoutes",
+            summary = "List gateway routes",
+            tags = {"System"},
+            description = "Roles: ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Gateway route table")
+    })
     @GetMapping("/api/gateway/routes")
     public Map<String, Object> routes() {
         Map<String, Object> body = new LinkedHashMap<>();
@@ -100,21 +132,50 @@ public class GatewayController {
     }
 
     // -------------------------------------------------------------------------
-    // Auth
+    // Authentication
     // -------------------------------------------------------------------------
-    @Operation(summary = "Staff login", description = "Authenticate staff credentials and issue access token with refresh token", tags = {"Authentication"}, security = {})
+    @Operation(
+            operationId = "login",
+            summary = "Staff login and token issuance",
+            tags = {"Authentication"},
+            description = "Public"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Login successful", content = @Content(schema = @Schema(implementation = LoginResponse.class))),
+            @ApiResponse(responseCode = "400", description = "VALIDATION_ERROR", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "401", description = "INVALID_CREDENTIALS | ACCOUNT_DISABLED", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @PostMapping(value = "/api/auth/login", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<JsonNode> login(@RequestBody LoginRequest request) {
         return post(identityClient, "/api/auth/login", request);
     }
 
-    @Operation(summary = "Rotate refresh token and issue new access token", description = "Rotate refresh token and issue new access token", tags = {"Authentication"}, security = {})
+    @Operation(
+            operationId = "refreshToken",
+            summary = "Refresh staff access token",
+            tags = {"Authentication"},
+            description = "Public"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Token refreshed", content = @Content(schema = @Schema(implementation = RefreshResponse.class))),
+            @ApiResponse(responseCode = "400", description = "VALIDATION_ERROR", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "401", description = "INVALID_TOKEN | TOKEN_EXPIRED | TOKEN_REVOKED", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @PostMapping(value = "/api/auth/refresh", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<JsonNode> refresh(@RequestBody RefreshRequest request) {
         return post(identityClient, "/api/auth/refresh", request);
     }
 
-    @Operation(summary = "Revoke current login session", description = "Revoke current login session", tags = {"Authentication"}, security = {})
+    @Operation(
+            operationId = "logout",
+            summary = "Revoke refresh session",
+            tags = {"Authentication"},
+            description = "Public"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "No Content"),
+            @ApiResponse(responseCode = "400", description = "VALIDATION_ERROR", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @PostMapping(value = "/api/auth/logout", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Void> logout(@RequestBody LogoutRequest request) {
         identityClient.post()
@@ -126,7 +187,23 @@ public class GatewayController {
         return ResponseEntity.noContent().build();
     }
 
-    @Operation(summary = "Accept staff invitation", description = "Accept staff invitation and activate account with password", tags = {"Authentication"}, security = {})
+    @Operation(
+            operationId = "acceptStaffInvitation",
+            summary = "Accept staff invitation and activate account",
+            tags = {"Authentication"},
+            description = "Public"
+    )
+    @io.swagger.v3.oas.annotations.parameters.RequestBody(
+            description = "Invitation acceptance payload",
+            required = true,
+            content = @Content(schema = @Schema(implementation = AcceptStaffInvitationRequest.class))
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Invitation accepted and account activated", content = @Content(schema = @Schema(implementation = StaffUserSummaryResponse.class))),
+            @ApiResponse(responseCode = "400", description = "VALIDATION_ERROR | INVALID_OR_EXPIRED_INVITATION | PASSWORD_TOO_WEAK", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "404", description = "INVITATION_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "409", description = "INVITATION_ALREADY_ACCEPTED | USER_ALREADY_EXISTS", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @PostMapping(value = "/api/auth/invitations/accept", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<JsonNode> acceptInvitation(@RequestBody JsonNode request) {
         return post(identityClient, "/api/auth/invitations/accept", request);
@@ -135,7 +212,15 @@ public class GatewayController {
     // -------------------------------------------------------------------------
     // Staff Administration & Governance
     // -------------------------------------------------------------------------
-    @Operation(summary = "List staff accounts", description = "Query paged staff users with optional filters", tags = {"Staff Administration"})
+    @Operation(
+            operationId = "listStaffUsers",
+            summary = "List staff accounts",
+            tags = {"Staff Administration"},
+            description = "Roles: ADMIN, OWNER"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Paged staff users list", content = @Content(schema = @Schema(implementation = StaffUserPageResponse.class)))
+    })
     @GetMapping(value = "/api/admin/users", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<JsonNode> listStaffUsers(
             @RequestParam(defaultValue = "0") int page,
@@ -154,7 +239,16 @@ public class GatewayController {
         return getWithAuth(identityClient, builder.toUriString(), authHeader);
     }
 
-    @Operation(summary = "Get staff account detail", description = "Retrieve staff user detail by id", tags = {"Staff Administration"})
+    @Operation(
+            operationId = "getStaffUser",
+            summary = "Get staff account detail",
+            tags = {"Staff Administration"},
+            description = "Roles: ADMIN, OWNER"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Staff user detail", content = @Content(schema = @Schema(implementation = StaffUserDetailResponse.class))),
+            @ApiResponse(responseCode = "404", description = "USER_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @GetMapping(value = "/api/admin/users/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<JsonNode> getStaffUserDetail(
             @PathVariable UUID id,
@@ -163,7 +257,22 @@ public class GatewayController {
         return getWithAuth(identityClient, "/api/admin/users/" + id, authHeader);
     }
 
-    @Operation(summary = "Create staff invitation", description = "Issue a new staff invitation", tags = {"Staff Administration"})
+    @Operation(
+            operationId = "createStaffInvitation",
+            summary = "Create staff invitation",
+            tags = {"Staff Administration"},
+            description = "Roles: ADMIN, OWNER"
+    )
+    @io.swagger.v3.oas.annotations.parameters.RequestBody(
+            description = "Staff invitation payload",
+            required = true,
+            content = @Content(schema = @Schema(implementation = CreateStaffInvitationRequest.class))
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Invitation created", content = @Content(schema = @Schema(implementation = InvitationCreatedResponse.class))),
+            @ApiResponse(responseCode = "400", description = "VALIDATION_ERROR | ROLE_NOT_ASSIGNABLE | CANNOT_INVITE_ROLE", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "409", description = "USER_ALREADY_EXISTS | INVITATION_ALREADY_ACTIVE", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @PostMapping(value = "/api/admin/users/invitations", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<JsonNode> createStaffInvitation(
             @RequestBody JsonNode request,
@@ -172,7 +281,17 @@ public class GatewayController {
         return postWithAuth(identityClient, "/api/admin/users/invitations", request, authHeader);
     }
 
-    @Operation(summary = "Resend staff invitation", description = "Invalidate existing invitation and create replacement", tags = {"Staff Administration"})
+    @Operation(
+            operationId = "resendStaffInvitation",
+            summary = "Resend staff invitation",
+            tags = {"Staff Administration"},
+            description = "Roles: ADMIN, OWNER"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Invitation resent", content = @Content(schema = @Schema(implementation = InvitationCreatedResponse.class))),
+            @ApiResponse(responseCode = "404", description = "INVITATION_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "409", description = "INVITATION_NOT_ACTIVE | INVITATION_ALREADY_ACCEPTED", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @PostMapping(value = "/api/admin/users/invitations/{id}/resend", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<JsonNode> resendStaffInvitation(
             @PathVariable UUID id,
@@ -181,7 +300,23 @@ public class GatewayController {
         return postWithAuth(identityClient, "/api/admin/users/invitations/" + id + "/resend", null, authHeader);
     }
 
-    @Operation(summary = "Disable staff account", description = "Disable staff user and revoke sessions", tags = {"Staff Administration"})
+    @Operation(
+            operationId = "disableStaffUser",
+            summary = "Disable staff user",
+            tags = {"Staff Administration"},
+            description = "Roles: ADMIN, OWNER"
+    )
+    @io.swagger.v3.oas.annotations.parameters.RequestBody(
+            description = "Optional disable reason payload",
+            required = false,
+            content = @Content(schema = @Schema(implementation = DisableStaffUserRequest.class))
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Staff user disabled", content = @Content(schema = @Schema(implementation = StaffUserSummaryResponse.class))),
+            @ApiResponse(responseCode = "400", description = "CANNOT_DISABLE_SELF", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "404", description = "USER_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "409", description = "ACCOUNT_ALREADY_DISABLED | CANNOT_DISABLE_LAST_ADMIN | CANNOT_DISABLE_LAST_OWNER", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @PostMapping(value = "/api/admin/users/{id}/disable", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<JsonNode> disableStaffUser(
             @PathVariable UUID id,
@@ -191,7 +326,17 @@ public class GatewayController {
         return postWithAuth(identityClient, "/api/admin/users/" + id + "/disable", request, authHeader);
     }
 
-    @Operation(summary = "Enable staff account", description = "Enable staff user", tags = {"Staff Administration"})
+    @Operation(
+            operationId = "enableStaffUser",
+            summary = "Enable staff user",
+            tags = {"Staff Administration"},
+            description = "Roles: ADMIN, OWNER"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Staff user enabled", content = @Content(schema = @Schema(implementation = StaffUserSummaryResponse.class))),
+            @ApiResponse(responseCode = "400", description = "ACCOUNT_ALREADY_ACTIVE", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "404", description = "USER_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @PostMapping(value = "/api/admin/users/{id}/enable", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<JsonNode> enableStaffUser(
             @PathVariable UUID id,
@@ -200,7 +345,23 @@ public class GatewayController {
         return postWithAuth(identityClient, "/api/admin/users/" + id + "/enable", null, authHeader);
     }
 
-    @Operation(summary = "Update staff roles", description = "Replace roles for staff user", tags = {"Staff Administration"})
+    @Operation(
+            operationId = "updateStaffRoles",
+            summary = "Update staff roles",
+            tags = {"Staff Administration"},
+            description = "Roles: ADMIN, OWNER"
+    )
+    @io.swagger.v3.oas.annotations.parameters.RequestBody(
+            description = "New roles replacement payload",
+            required = true,
+            content = @Content(schema = @Schema(implementation = UpdateStaffRolesRequest.class))
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Staff roles updated", content = @Content(schema = @Schema(implementation = StaffUserDetailResponse.class))),
+            @ApiResponse(responseCode = "400", description = "VALIDATION_ERROR | CANNOT_DEMOTE_SELF | ROLE_NOT_ASSIGNABLE", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "404", description = "USER_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "409", description = "CANNOT_REMOVE_LAST_ADMIN | CANNOT_REMOVE_LAST_OWNER", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @PutMapping(value = "/api/admin/users/{id}/roles", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<JsonNode> updateStaffRoles(
             @PathVariable UUID id,
@@ -210,7 +371,16 @@ public class GatewayController {
         return putWithAuth(identityClient, "/api/admin/users/" + id + "/roles", request, authHeader);
     }
 
-    @Operation(summary = "Revoke staff sessions", description = "Revoke refresh sessions for staff user", tags = {"Staff Administration"})
+    @Operation(
+            operationId = "revokeStaffSessions",
+            summary = "Revoke staff sessions",
+            tags = {"Staff Administration"},
+            description = "Roles: ADMIN, OWNER"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "No Content"),
+            @ApiResponse(responseCode = "404", description = "USER_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @PostMapping(value = "/api/admin/users/{id}/revoke-sessions")
     public ResponseEntity<Void> revokeStaffSessions(
             @PathVariable UUID id,
@@ -224,7 +394,18 @@ public class GatewayController {
         return ResponseEntity.noContent().build();
     }
 
-    @Operation(summary = "Issue WebSocket ticket for Dashboard", description = "Issue a short-lived one-time WebSocket ticket for ADMIN and MANAGER", tags = {"Authentication"})
+    // -------------------------------------------------------------------------
+    // Dashboard
+    // -------------------------------------------------------------------------
+    @Operation(
+            operationId = "issueDashboardWsTicket",
+            summary = "Issue dashboard WebSocket ticket",
+            tags = {"Dashboard"},
+            description = "Roles: ADMIN, MANAGER"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "WebSocket ticket issued", content = @Content(schema = @Schema(implementation = WebSocketTicketResponse.class)))
+    })
     @PostMapping(value = "/api/ws/tickets/dashboard", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<JsonNode> issueDashboardWsTicket(@RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader) {
         ResponseEntity<JsonNode> response = postWithAuth(identityClient, "/api/ws/tickets/dashboard", null, authHeader);
@@ -236,25 +417,115 @@ public class GatewayController {
                 .body(response.getBody());
     }
 
+    @Operation(
+            operationId = "getDashboardSnapshot",
+            summary = "Aggregate full operational snapshot",
+            tags = {"Dashboard"},
+            description = "Roles: ADMIN, MANAGER"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Operational snapshot", content = @Content(schema = @Schema(implementation = DashboardSnapshotResponse.class)))
+    })
+    @GetMapping("/api/dashboard/snapshot")
+    public ResponseEntity<JsonNode> dashboardSnapshot() {
+        ObjectNode body = objectMapper.createObjectNode();
+        body.set("rooms", getBody(receptionClient, "/api/reception/rooms"));
+        body.set("guests", getBody(receptionClient, "/api/reception/guests"));
+        body.set("roomServiceOrders", getBody(roomServiceClient, "/api/room-service/orders"));
+        body.set("maintenanceIssues", getBody(maintenanceClient, "/api/maintenance/issues"));
+        body.set("housekeepingQueue", getBody(housekeepingClient, "/api/housekeeping/queue"));
+        body.set("events", getBody(dashboardClient, "/api/dashboard/events"));
+        return ResponseEntity.ok(body);
+    }
+
+    @Operation(
+            operationId = "listDashboardEvents",
+            summary = "Get dashboard event history",
+            tags = {"Dashboard"},
+            description = "Roles: ADMIN, MANAGER"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Event feed", content = @Content(schema = @Schema(implementation = EventFeedResponse.class)))
+    })
+    @GetMapping("/api/dashboard/events")
+    public ResponseEntity<JsonNode> getDashboardEvents() {
+        return get(dashboardClient, "/api/dashboard/events");
+    }
+
+    @Operation(
+            operationId = "clearDashboardEvents",
+            summary = "Clear dashboard event history",
+            tags = {"Dashboard"},
+            description = "Roles: ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Cleared event feed", content = @Content(schema = @Schema(implementation = EventFeedResponse.class)))
+    })
+    @DeleteMapping("/api/dashboard/events")
+    public ResponseEntity<JsonNode> clearDashboardEvents() {
+        return delete(dashboardClient, "/api/dashboard/events");
+    }
+
+    @Operation(
+            operationId = "triggerDashboardBootstrap",
+            summary = "Trigger dashboard persistent read-model bootstrap",
+            tags = {"Dashboard"},
+            description = "Roles: ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Bootstrap result", content = @Content(schema = @Schema(implementation = BootstrapResultResponse.class)))
+    })
+    @PostMapping("/api/dashboard/bootstrap")
+    public ResponseEntity<JsonNode> triggerDashboardBootstrap() {
+        return post(dashboardClient, "/api/dashboard/bootstrap", null);
+    }
+
     // -------------------------------------------------------------------------
-    // Reception
+    // Reception — Rooms
     // -------------------------------------------------------------------------
-    @Operation(summary = "Get all rooms", tags = {"Reception"})
+    @Operation(
+            operationId = "listRooms",
+            summary = "Get all rooms",
+            tags = {"Reception — Rooms"},
+            description = "Roles: ALL_STAFF"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Room list", content = @Content(array = @ArraySchema(schema = @Schema(implementation = RoomResponse.class))))
+    })
     @GetMapping("/api/reception/rooms")
     public ResponseEntity<JsonNode> getRooms() {
         return get(receptionClient, "/api/reception/rooms");
     }
 
-    @Operation(summary = "Get room by room number", tags = {"Reception"})
+    @Operation(
+            operationId = "getRoom",
+            summary = "Get room by room number",
+            tags = {"Reception — Rooms"},
+            description = "Roles: ALL_STAFF"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Room detail", content = @Content(schema = @Schema(implementation = RoomResponse.class))),
+            @ApiResponse(responseCode = "404", description = "ROOM_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @GetMapping("/api/reception/rooms/{roomNumber}")
     public ResponseEntity<JsonNode> getRoom(@PathVariable String roomNumber) {
         return get(receptionClient, "/api/reception/rooms/" + roomNumber);
     }
 
-    @Operation(summary = "Get available rooms", description = "Optional query params: roomType and floor.", tags = {"Reception"})
+    @Operation(
+            operationId = "listAvailableRooms",
+            summary = "Get available rooms",
+            tags = {"Reception — Rooms"},
+            description = "Roles: ALL_STAFF"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Available rooms list", content = @Content(array = @ArraySchema(schema = @Schema(implementation = RoomResponse.class))))
+    })
     @GetMapping("/api/reception/rooms/available")
-    public ResponseEntity<JsonNode> getAvailableRooms(@RequestParam(required = false) String roomType,
-                                                      @RequestParam(required = false) Integer floor) {
+    public ResponseEntity<JsonNode> getAvailableRooms(
+            @RequestParam(required = false) String roomType,
+            @RequestParam(required = false) Integer floor
+    ) {
         StringBuilder uri = new StringBuilder("/api/reception/rooms/available");
         if (roomType != null || floor != null) {
             uri.append("?");
@@ -269,49 +540,218 @@ public class GatewayController {
         return get(receptionClient, uri.toString());
     }
 
-    @Operation(summary = "Check in guest", tags = {"Reception"})
+    // -------------------------------------------------------------------------
+    // Reception — Stays
+    // -------------------------------------------------------------------------
+    @Operation(
+            operationId = "checkInGuest",
+            summary = "Check in guest (direct walk-in)",
+            tags = {"Reception — Stays"},
+            description = "Roles: RECEPTIONIST, MANAGER, ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Guest checked in", content = @Content(schema = @Schema(implementation = CheckInResponse.class))),
+            @ApiResponse(responseCode = "400", description = "VALIDATION_ERROR", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "404", description = "GUEST_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "409", description = "NO_INVENTORY | NO_ROOM_READY | CONCURRENT_STATE_CHANGE", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @PostMapping(value = "/api/reception/check-in", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<JsonNode> checkIn(@RequestBody CheckInRequest request) {
         return post(receptionClient, "/api/reception/check-in", request);
     }
 
-    @Operation(summary = "Check out guest", tags = {"Reception"})
+    @Operation(
+            operationId = "checkOutGuest",
+            summary = "Check out guest by room number",
+            tags = {"Reception — Stays"},
+            description = "Roles: RECEPTIONIST, MANAGER, ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Guest checked out", content = @Content(schema = @Schema(implementation = CheckOutResponse.class))),
+            @ApiResponse(responseCode = "400", description = "VALIDATION_ERROR", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "404", description = "NO_ACTIVE_STAY", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "409", description = "PENDING_ROOM_SERVICE_ORDERS | STAY_ALREADY_CHECKED_OUT | FREEZE_CONFLICT", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @PostMapping("/api/reception/check-out/{roomNumber}")
     public ResponseEntity<JsonNode> checkOut(@PathVariable String roomNumber) {
         return post(receptionClient, "/api/reception/check-out/" + roomNumber, null);
     }
 
-    @Operation(summary = "Get active guests", tags = {"Reception"})
+    @Operation(
+            operationId = "listStays",
+            summary = "List guest stays",
+            tags = {"Reception — Stays"},
+            description = "Roles: RECEPTIONIST, MANAGER, ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Paged stays list", content = @Content(schema = @Schema(implementation = StayPageResponse.class)))
+    })
+    @GetMapping("/api/reception/stays")
+    public ResponseEntity<JsonNode> listStays(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) Boolean activeOnly,
+            @RequestParam(required = false) UUID guestId,
+            @RequestParam(required = false) String roomNumber
+    ) {
+        UriComponentsBuilder builder = UriComponentsBuilder.fromPath("/api/reception/stays")
+                .queryParam("page", page)
+                .queryParam("size", size);
+        if (sort != null) builder.queryParam("sort", sort);
+        if (activeOnly != null) builder.queryParam("activeOnly", activeOnly);
+        if (guestId != null) builder.queryParam("guestId", guestId);
+        if (roomNumber != null) builder.queryParam("roomNumber", roomNumber);
+        return get(receptionClient, builder.build().toUriString());
+    }
+
+    @Operation(
+            operationId = "getStay",
+            summary = "Get guest stay details",
+            tags = {"Reception — Stays"},
+            description = "Roles: RECEPTIONIST, MANAGER, ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Stay detail", content = @Content(schema = @Schema(implementation = StayResponse.class))),
+            @ApiResponse(responseCode = "404", description = "STAY_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
+    @GetMapping("/api/reception/stays/{stayId}")
+    public ResponseEntity<JsonNode> getStay(@PathVariable UUID stayId) {
+        return get(receptionClient, "/api/reception/stays/" + stayId);
+    }
+
+    @Operation(
+            operationId = "extendStay",
+            summary = "Extend guest stay",
+            tags = {"Reception — Stays"},
+            description = "Roles: RECEPTIONIST, MANAGER, ADMIN"
+    )
+    @io.swagger.v3.oas.annotations.parameters.RequestBody(
+            description = "Stay extension request payload",
+            required = true,
+            content = @Content(schema = @Schema(implementation = ExtendStayRequest.class))
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Stay extended", content = @Content(schema = @Schema(implementation = StayResponse.class))),
+            @ApiResponse(responseCode = "400", description = "VALIDATION_ERROR | INVALID_EXTENSION_DATE", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "404", description = "STAY_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "409", description = "NO_INVENTORY | STAY_NOT_ACTIVE | CONCURRENT_STATE_CHANGE", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
+    @PostMapping(value = "/api/reception/stays/{stayId}/extend", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<JsonNode> extendStay(@PathVariable UUID stayId, @RequestBody JsonNode request) {
+        return post(receptionClient, "/api/reception/stays/" + stayId + "/extend", request);
+    }
+
+    @Operation(
+            operationId = "changeStayRoom",
+            summary = "Change room for guest stay",
+            tags = {"Reception — Stays"},
+            description = "Roles: RECEPTIONIST, MANAGER, ADMIN"
+    )
+    @io.swagger.v3.oas.annotations.parameters.RequestBody(
+            description = "Room transfer request payload",
+            required = true,
+            content = @Content(schema = @Schema(implementation = ChangeRoomRequest.class))
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Room changed", content = @Content(schema = @Schema(implementation = StayResponse.class))),
+            @ApiResponse(responseCode = "400", description = "VALIDATION_ERROR | SAME_ROOM_TRANSFER", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "404", description = "STAY_NOT_FOUND | ROOM_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "409", description = "ROOM_NOT_READY | ROOM_OCCUPIED | STAY_NOT_ACTIVE | CONCURRENT_STATE_CHANGE", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
+    @PostMapping(value = "/api/reception/stays/{stayId}/change-room", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<JsonNode> changeRoom(@PathVariable UUID stayId, @RequestBody JsonNode request) {
+        return post(receptionClient, "/api/reception/stays/" + stayId + "/change-room", request);
+    }
+
+    @Operation(
+            operationId = "checkOutStayById",
+            summary = "Check out guest stay by stay ID",
+            tags = {"Reception — Stays"},
+            description = "Roles: RECEPTIONIST, MANAGER, ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Stay checked out", content = @Content(schema = @Schema(implementation = CheckOutResponse.class))),
+            @ApiResponse(responseCode = "404", description = "STAY_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "409", description = "PENDING_ROOM_SERVICE_ORDERS | STAY_ALREADY_CHECKED_OUT | FREEZE_CONFLICT", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
+    @PostMapping("/api/reception/stays/{stayId}/check-out")
+    public ResponseEntity<JsonNode> checkOutStay(@PathVariable UUID stayId) {
+        return post(receptionClient, "/api/reception/stays/" + stayId + "/check-out", null);
+    }
+
+    // -------------------------------------------------------------------------
+    // Reception — Guests
+    // -------------------------------------------------------------------------
+    @Operation(
+            operationId = "listGuests",
+            summary = "Get active guests",
+            tags = {"Reception — Guests"},
+            description = "Roles: RECEPTIONIST, MANAGER, ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Active guest stays list", content = @Content(array = @ArraySchema(schema = @Schema(implementation = GuestStayResponse.class))))
+    })
     @GetMapping("/api/reception/guests")
     public ResponseEntity<JsonNode> getGuests() {
         return get(receptionClient, "/api/reception/guests");
     }
 
-    @Operation(summary = "Get guest by room", tags = {"Reception"})
+    @Operation(
+            operationId = "getGuestByRoom",
+            summary = "Get guest by room",
+            tags = {"Reception — Guests"},
+            description = "Roles: RECEPTIONIST, MANAGER, ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Guest stay detail", content = @Content(schema = @Schema(implementation = GuestStayResponse.class))),
+            @ApiResponse(responseCode = "404", description = "NO_ACTIVE_STAY", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @GetMapping("/api/reception/guests/by-room/{roomNumber}")
     public ResponseEntity<JsonNode> getGuestByRoom(@PathVariable String roomNumber) {
         return get(receptionClient, "/api/reception/guests/by-room/" + roomNumber);
     }
 
-    @Operation(summary = "Archive a guest stay", tags = {"Reception"})
+    @Operation(
+            operationId = "archiveGuestStay",
+            summary = "Archive a guest stay",
+            tags = {"Reception — Guests"},
+            description = "Roles: RECEPTIONIST, MANAGER, ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Guest stay archived", content = @Content(schema = @Schema(implementation = GuestStayResponse.class))),
+            @ApiResponse(responseCode = "404", description = "GUEST_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @PatchMapping("/api/reception/guests/{guestId}/archive")
     public ResponseEntity<JsonNode> archiveGuest(@PathVariable String guestId) {
         return patch(receptionClient, "/api/reception/guests/" + guestId + "/archive", null);
     }
 
-    @Operation(summary = "Calculate bill for room", tags = {"Reception"})
-    @PostMapping("/api/reception/bills/{roomNumber}/calculate")
-    public ResponseEntity<JsonNode> calculateBill(@PathVariable String roomNumber) {
-        return post(receptionClient, "/api/reception/bills/" + roomNumber + "/calculate", null);
-    }
-
-    @Operation(summary = "Create guest profile", tags = {"Reception"})
+    @Operation(
+            operationId = "createGuestProfile",
+            summary = "Create guest profile",
+            tags = {"Reception — Guests"},
+            description = "Roles: RECEPTIONIST, MANAGER, ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Guest profile created", content = @Content(schema = @Schema(implementation = GuestProfileResponse.class))),
+            @ApiResponse(responseCode = "400", description = "VALIDATION_ERROR", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "409", description = "GUEST_ALREADY_EXISTS", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @PostMapping(value = "/api/reception/guest-profiles", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<JsonNode> createGuestProfile(@RequestBody CreateGuestRequest request) {
         return post(receptionClient, "/api/reception/guest-profiles", request);
     }
 
-    @Operation(summary = "Search guest profiles with pagination and sorting", tags = {"Reception"})
+    @Operation(
+            operationId = "listGuestProfiles",
+            summary = "Search guest profiles with pagination and sorting",
+            tags = {"Reception — Guests"},
+            description = "Roles: RECEPTIONIST, MANAGER, ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Paged guest profiles list", content = @Content(schema = @Schema(implementation = GuestProfilePageResponse.class)))
+    })
     @GetMapping("/api/reception/guest-profiles")
     public ResponseEntity<JsonNode> getGuestProfiles(
             @RequestParam(required = false) String search,
@@ -329,19 +769,58 @@ public class GatewayController {
         return get(receptionClient, builder.toUriString());
     }
 
-    @Operation(summary = "Get guest profile by ID", tags = {"Reception"})
+    @Operation(
+            operationId = "getGuestProfile",
+            summary = "Get guest profile by ID",
+            tags = {"Reception — Guests"},
+            description = "Roles: RECEPTIONIST, MANAGER, ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Guest profile detail", content = @Content(schema = @Schema(implementation = GuestProfileResponse.class))),
+            @ApiResponse(responseCode = "404", description = "GUEST_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @GetMapping("/api/reception/guest-profiles/{id}")
     public ResponseEntity<JsonNode> getGuestProfileById(@PathVariable UUID id) {
         return get(receptionClient, "/api/reception/guest-profiles/" + id);
     }
 
-    @Operation(summary = "Update guest profile", tags = {"Reception"})
+    @Operation(
+            operationId = "updateGuestProfile",
+            summary = "Update guest profile",
+            tags = {"Reception — Guests"},
+            description = "Roles: RECEPTIONIST, MANAGER, ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Guest profile updated", content = @Content(schema = @Schema(implementation = GuestProfileResponse.class))),
+            @ApiResponse(responseCode = "400", description = "VALIDATION_ERROR", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "404", description = "GUEST_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "409", description = "GUEST_ALREADY_EXISTS", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @PutMapping(value = "/api/reception/guest-profiles/{id}", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<JsonNode> updateGuestProfile(@PathVariable UUID id, @RequestBody UpdateGuestRequest request) {
         return put(receptionClient, "/api/reception/guest-profiles/" + id, request);
     }
 
-    @Operation(summary = "Create confirmed reservation", tags = {"Reception"})
+    // -------------------------------------------------------------------------
+    // Reception — Reservations
+    // -------------------------------------------------------------------------
+    @Operation(
+            operationId = "createReservation",
+            summary = "Create confirmed reservation",
+            tags = {"Reception — Reservations"},
+            description = "Roles: RECEPTIONIST, MANAGER, ADMIN"
+    )
+    @io.swagger.v3.oas.annotations.parameters.RequestBody(
+            description = "Reservation creation request payload",
+            required = true,
+            content = @Content(schema = @Schema(implementation = CreateReservationRequest.class))
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Reservation created", content = @Content(schema = @Schema(implementation = ReservationResponse.class))),
+            @ApiResponse(responseCode = "400", description = "VALIDATION_ERROR", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "404", description = "GUEST_NOT_FOUND | ROOM_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "409", description = "NO_INVENTORY | ROOM_TYPE_MISMATCH | ROOM_OUT_OF_ORDER | ROOM_ALREADY_ALLOCATED | IDEMPOTENCY_CONFLICT", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @PostMapping(value = "/api/reception/reservations", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<JsonNode> createReservation(
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
@@ -350,7 +829,15 @@ public class GatewayController {
         return postWithHeader(receptionClient, "/api/reception/reservations", request, "Idempotency-Key", idempotencyKey);
     }
 
-    @Operation(summary = "List reservations", tags = {"Reception"})
+    @Operation(
+            operationId = "listReservations",
+            summary = "List reservations",
+            tags = {"Reception — Reservations"},
+            description = "Roles: RECEPTIONIST, MANAGER, ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Paged reservations list", content = @Content(schema = @Schema(implementation = ReservationPageResponse.class)))
+    })
     @GetMapping("/api/reception/reservations")
     public ResponseEntity<JsonNode> listReservations(
             @RequestParam(defaultValue = "0") int page,
@@ -380,7 +867,16 @@ public class GatewayController {
         return get(receptionClient, builder.toUriString());
     }
 
-    @Operation(summary = "Get reservation availability", tags = {"Reception"})
+    @Operation(
+            operationId = "checkReservationAvailability",
+            summary = "Get reservation availability",
+            tags = {"Reception — Reservations"},
+            description = "Roles: RECEPTIONIST, MANAGER, ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Availability search results", content = @Content(schema = @Schema(implementation = AvailabilityResponse.class))),
+            @ApiResponse(responseCode = "400", description = "VALIDATION_ERROR", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @GetMapping("/api/reception/reservations/availability")
     public ResponseEntity<JsonNode> reservationAvailability(
             @RequestParam String roomType,
@@ -395,99 +891,172 @@ public class GatewayController {
         return get(receptionClient, uri);
     }
 
-    @Operation(summary = "Get reservation by ID", tags = {"Reception"})
+    @Operation(
+            operationId = "getReservation",
+            summary = "Get reservation by ID",
+            tags = {"Reception — Reservations"},
+            description = "Roles: RECEPTIONIST, MANAGER, ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Reservation detail", content = @Content(schema = @Schema(implementation = ReservationResponse.class))),
+            @ApiResponse(responseCode = "404", description = "RESERVATION_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @GetMapping("/api/reception/reservations/{id}")
     public ResponseEntity<JsonNode> getReservation(@PathVariable UUID id) {
         return get(receptionClient, "/api/reception/reservations/" + id);
     }
 
-    @Operation(summary = "Update mutable reservation fields", tags = {"Reception"})
+    @Operation(
+            operationId = "patchReservation",
+            summary = "Update mutable reservation fields",
+            tags = {"Reception — Reservations"},
+            description = "Roles: RECEPTIONIST, MANAGER, ADMIN"
+    )
+    @io.swagger.v3.oas.annotations.parameters.RequestBody(
+            description = "Reservation patch payload",
+            required = true,
+            content = @Content(schema = @Schema(implementation = PatchReservationRequest.class))
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Reservation updated", content = @Content(schema = @Schema(implementation = ReservationResponse.class))),
+            @ApiResponse(responseCode = "400", description = "VALIDATION_ERROR", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "404", description = "RESERVATION_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "409", description = "RESERVATION_NOT_MUTABLE | NO_INVENTORY | ROOM_ALREADY_ALLOCATED | IDEMPOTENCY_CONFLICT | CONCURRENT_STATE_CHANGE", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @PatchMapping(value = "/api/reception/reservations/{id}", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<JsonNode> patchReservation(@PathVariable UUID id, @RequestBody JsonNode request) {
         return patch(receptionClient, "/api/reception/reservations/" + id, request);
     }
 
-    @Operation(summary = "Cancel reservation", tags = {"Reception"})
+    @Operation(
+            operationId = "cancelReservation",
+            summary = "Cancel reservation",
+            tags = {"Reception — Reservations"},
+            description = "Roles: RECEPTIONIST, MANAGER, ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Reservation cancelled", content = @Content(schema = @Schema(implementation = ReservationResponse.class))),
+            @ApiResponse(responseCode = "404", description = "RESERVATION_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "409", description = "INVALID_RESERVATION_TRANSITION | CONCURRENT_STATE_CHANGE", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @PostMapping("/api/reception/reservations/{id}/cancel")
     public ResponseEntity<JsonNode> cancelReservation(@PathVariable UUID id) {
         return post(receptionClient, "/api/reception/reservations/" + id + "/cancel", null);
     }
 
-    @Operation(summary = "Mark reservation no-show", tags = {"Reception"})
+    @Operation(
+            operationId = "noShowReservation",
+            summary = "Mark reservation no-show",
+            tags = {"Reception — Reservations"},
+            description = "Roles: RECEPTIONIST, MANAGER, ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Reservation marked no-show", content = @Content(schema = @Schema(implementation = ReservationResponse.class))),
+            @ApiResponse(responseCode = "404", description = "RESERVATION_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "409", description = "INVALID_RESERVATION_TRANSITION | NO_SHOW_TOO_EARLY | CONCURRENT_STATE_CHANGE", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @PostMapping("/api/reception/reservations/{id}/no-show")
     public ResponseEntity<JsonNode> noShowReservation(@PathVariable UUID id) {
         return post(receptionClient, "/api/reception/reservations/" + id + "/no-show", null);
     }
 
-    @Operation(summary = "Assign or change reservation room", tags = {"Reception"})
+    @Operation(
+            operationId = "assignReservationRoom",
+            summary = "Assign or change reservation room",
+            tags = {"Reception — Reservations"},
+            description = "Roles: RECEPTIONIST, MANAGER, ADMIN"
+    )
+    @io.swagger.v3.oas.annotations.parameters.RequestBody(
+            description = "Room assignment request payload",
+            required = true,
+            content = @Content(schema = @Schema(implementation = AssignRoomRequest.class))
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Room assigned to reservation", content = @Content(schema = @Schema(implementation = ReservationResponse.class))),
+            @ApiResponse(responseCode = "400", description = "VALIDATION_ERROR", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "404", description = "RESERVATION_NOT_FOUND | ROOM_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "409", description = "ROOM_TYPE_MISMATCH | ROOM_OUT_OF_ORDER | ROOM_ALREADY_ALLOCATED | RESERVATION_NOT_MUTABLE", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @PostMapping(value = "/api/reception/reservations/{id}/assign-room", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<JsonNode> assignReservationRoom(@PathVariable UUID id, @RequestBody JsonNode request) {
         return post(receptionClient, "/api/reception/reservations/" + id + "/assign-room", request);
     }
 
-    @Operation(summary = "Check in confirmed reservation", tags = {"Reception"})
+    @Operation(
+            operationId = "checkInReservation",
+            summary = "Check in confirmed reservation",
+            tags = {"Reception — Reservations"},
+            description = "Roles: RECEPTIONIST, MANAGER, ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Stay created from reservation", content = @Content(schema = @Schema(implementation = StayResponse.class))),
+            @ApiResponse(responseCode = "404", description = "RESERVATION_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "409", description = "INVALID_RESERVATION_TRANSITION | EARLY_CHECKIN_NOT_ALLOWED | PAST_DEPARTURE_CHECKIN | ASSIGNED_ROOM_NOT_READY | NO_ROOM_READY | CONCURRENT_STATE_CHANGE", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @PostMapping("/api/reception/reservations/{id}/check-in")
     public ResponseEntity<JsonNode> checkInReservation(@PathVariable UUID id) {
         return post(receptionClient, "/api/reception/reservations/" + id + "/check-in", null);
     }
 
-    @Operation(summary = "List guest stays", tags = {"Reception"})
-    @GetMapping("/api/reception/stays")
-    public ResponseEntity<JsonNode> listStays(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size,
-            @RequestParam(required = false) String sort,
-            @RequestParam(required = false) Boolean activeOnly,
-            @RequestParam(required = false) UUID guestId,
-            @RequestParam(required = false) String roomNumber
-    ) {
-        UriComponentsBuilder builder = UriComponentsBuilder.fromPath("/api/reception/stays")
-                .queryParam("page", page)
-                .queryParam("size", size);
-        if (sort != null) builder.queryParam("sort", sort);
-        if (activeOnly != null) builder.queryParam("activeOnly", activeOnly);
-        if (guestId != null) builder.queryParam("guestId", guestId);
-        if (roomNumber != null) builder.queryParam("roomNumber", roomNumber);
-        return get(receptionClient, builder.build().toUriString());
+    // -------------------------------------------------------------------------
+    // Reception — Folio
+    // -------------------------------------------------------------------------
+    @Operation(
+            operationId = "calculateRoomBill",
+            summary = "Calculate bill for room",
+            tags = {"Reception — Folio"},
+            description = "Roles: RECEPTIONIST, MANAGER, ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Calculated bill summary", content = @Content(schema = @Schema(implementation = BillCalculationResponse.class))),
+            @ApiResponse(responseCode = "400", description = "VALIDATION_ERROR", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "404", description = "ROOM_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
+    @PostMapping("/api/reception/bills/{roomNumber}/calculate")
+    public ResponseEntity<JsonNode> calculateBill(@PathVariable String roomNumber) {
+        return post(receptionClient, "/api/reception/bills/" + roomNumber + "/calculate", null);
     }
 
-    @Operation(summary = "Get guest stay details", tags = {"Reception"})
-    @GetMapping("/api/reception/stays/{stayId}")
-    public ResponseEntity<JsonNode> getStay(@PathVariable UUID stayId) {
-        return get(receptionClient, "/api/reception/stays/" + stayId);
-    }
-
-    @Operation(summary = "Extend guest stay", tags = {"Reception"})
-    @PostMapping(value = "/api/reception/stays/{stayId}/extend", consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<JsonNode> extendStay(@PathVariable UUID stayId, @RequestBody JsonNode request) {
-        return post(receptionClient, "/api/reception/stays/" + stayId + "/extend", request);
-    }
-
-    @Operation(summary = "Change room for guest stay", tags = {"Reception"})
-    @PostMapping(value = "/api/reception/stays/{stayId}/change-room", consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<JsonNode> changeRoom(@PathVariable UUID stayId, @RequestBody JsonNode request) {
-        return post(receptionClient, "/api/reception/stays/" + stayId + "/change-room", request);
-    }
-
-    @Operation(summary = "Check out guest stay", tags = {"Reception"})
-    @PostMapping("/api/reception/stays/{stayId}/check-out")
-    public ResponseEntity<JsonNode> checkOutStay(@PathVariable UUID stayId) {
-        return post(receptionClient, "/api/reception/stays/" + stayId + "/check-out", null);
-    }
-
-    @Operation(summary = "Get folio for guest stay", tags = {"Reception"})
+    @Operation(
+            operationId = "getFolioByStay",
+            summary = "Get folio for guest stay",
+            tags = {"Reception — Folio"},
+            description = "Roles: RECEPTIONIST, MANAGER, ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Folio summary", content = @Content(schema = @Schema(implementation = FolioResponse.class))),
+            @ApiResponse(responseCode = "404", description = "STAY_NOT_FOUND | FOLIO_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @GetMapping("/api/reception/stays/{stayId}/folio")
     public ResponseEntity<JsonNode> getFolioByStay(@PathVariable UUID stayId) {
         return get(receptionClient, "/api/reception/stays/" + stayId + "/folio");
     }
 
-    @Operation(summary = "Get folio by ID", tags = {"Reception"})
+    @Operation(
+            operationId = "getFolio",
+            summary = "Get folio by ID",
+            tags = {"Reception — Folio"},
+            description = "Roles: RECEPTIONIST, MANAGER, ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Folio summary", content = @Content(schema = @Schema(implementation = FolioResponse.class))),
+            @ApiResponse(responseCode = "404", description = "FOLIO_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @GetMapping("/api/reception/folios/{folioId}")
     public ResponseEntity<JsonNode> getFolio(@PathVariable UUID folioId) {
         return get(receptionClient, "/api/reception/folios/" + folioId);
     }
 
-    @Operation(summary = "List folio ledger entries", tags = {"Reception"})
+    @Operation(
+            operationId = "listFolioEntries",
+            summary = "List folio ledger entries",
+            tags = {"Reception — Folio"},
+            description = "Roles: RECEPTIONIST, MANAGER, ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Paged folio ledger entries", content = @Content(schema = @Schema(implementation = FolioEntryPageResponse.class))),
+            @ApiResponse(responseCode = "404", description = "FOLIO_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @GetMapping("/api/reception/folios/{folioId}/entries")
     public ResponseEntity<JsonNode> getFolioEntries(
             @PathVariable UUID folioId,
@@ -504,7 +1073,23 @@ public class GatewayController {
         return get(receptionClient, builder.build().toUriString());
     }
 
-    @Operation(summary = "Create manual adjustment on folio", tags = {"Reception"})
+    @Operation(
+            operationId = "createFolioAdjustment",
+            summary = "Create manual adjustment on folio",
+            tags = {"Reception — Folio"},
+            description = "Roles: RECEPTIONIST, MANAGER, ADMIN"
+    )
+    @io.swagger.v3.oas.annotations.parameters.RequestBody(
+            description = "Folio adjustment request payload",
+            required = true,
+            content = @Content(schema = @Schema(implementation = CreateAdjustmentRequest.class))
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Adjustment posted", content = @Content(schema = @Schema(implementation = FolioEntryResponse.class))),
+            @ApiResponse(responseCode = "400", description = "VALIDATION_ERROR | INVALID_ADJUSTMENT_AMOUNT", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "404", description = "FOLIO_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "409", description = "FOLIO_CLOSED | IDEMPOTENCY_CONFLICT", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @PostMapping(value = "/api/reception/folios/{folioId}/adjustments", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<JsonNode> createAdjustment(
             @PathVariable UUID folioId,
@@ -518,31 +1103,86 @@ public class GatewayController {
     // -------------------------------------------------------------------------
     // Housekeeping
     // -------------------------------------------------------------------------
-    @Operation(summary = "Get housekeeping queue", tags = {"Housekeeping"})
+    @Operation(
+            operationId = "getHousekeepingQueue",
+            summary = "Get housekeeping queue",
+            tags = {"Housekeeping"},
+            description = "Roles: HOUSEKEEPING, MANAGER, ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Turnover cleaning queue", content = @Content(array = @ArraySchema(schema = @Schema(implementation = CleaningTaskResponse.class))))
+    })
     @GetMapping("/api/housekeeping/queue")
     public ResponseEntity<JsonNode> getHousekeepingQueue() {
         return get(housekeepingClient, "/api/housekeeping/queue");
     }
 
-    @Operation(summary = "Add room to housekeeping queue", tags = {"Housekeeping"})
+    @Operation(
+            operationId = "enqueueHousekeepingTask",
+            summary = "Add room to housekeeping queue",
+            tags = {"Housekeeping"},
+            description = "Roles: HOUSEKEEPING, MANAGER, ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Task added to queue", content = @Content(schema = @Schema(implementation = CleaningTaskResponse.class))),
+            @ApiResponse(responseCode = "400", description = "VALIDATION_ERROR", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "404", description = "ROOM_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "409", description = "TASK_ALREADY_QUEUED", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @PostMapping("/api/housekeeping/queue/{roomNumber}")
     public ResponseEntity<JsonNode> addToHousekeepingQueue(@PathVariable String roomNumber) {
         return post(housekeepingClient, "/api/housekeeping/queue/" + roomNumber, null);
     }
 
-    @Operation(summary = "Start room cleaning", tags = {"Housekeeping"})
+    @Operation(
+            operationId = "startHousekeepingCleaning",
+            summary = "Start room cleaning",
+            tags = {"Housekeeping"},
+            description = "Roles: HOUSEKEEPING, MANAGER, ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Cleaning started", content = @Content(schema = @Schema(implementation = CleaningTaskResponse.class))),
+            @ApiResponse(responseCode = "404", description = "ROOM_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "409", description = "ROOM_NOT_IN_DIRTY_STATE", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @PostMapping("/api/housekeeping/rooms/{roomNumber}/start")
     public ResponseEntity<JsonNode> startCleaning(@PathVariable String roomNumber) {
         return post(housekeepingClient, "/api/housekeeping/rooms/" + roomNumber + "/start", null);
     }
 
-    @Operation(summary = "Mark room clean", tags = {"Housekeeping"})
+    @Operation(
+            operationId = "completeHousekeepingCleaning",
+            summary = "Mark room clean",
+            tags = {"Housekeeping"},
+            description = "Roles: HOUSEKEEPING, MANAGER, ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Room marked clean", content = @Content(schema = @Schema(implementation = CleaningTaskResponse.class))),
+            @ApiResponse(responseCode = "404", description = "ROOM_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "409", description = "ROOM_NOT_IN_CLEANING_STATE", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @PostMapping("/api/housekeeping/rooms/{roomNumber}/clean")
     public ResponseEntity<JsonNode> markRoomClean(@PathVariable String roomNumber) {
         return post(housekeepingClient, "/api/housekeeping/rooms/" + roomNumber + "/clean", null);
     }
 
-    @Operation(summary = "Report defect from housekeeping", tags = {"Housekeeping"})
+    @Operation(
+            operationId = "reportHousekeepingDefect",
+            summary = "Report defect from housekeeping",
+            tags = {"Housekeeping"},
+            description = "Roles: HOUSEKEEPING, MANAGER, ADMIN"
+    )
+    @io.swagger.v3.oas.annotations.parameters.RequestBody(
+            description = "Defect reporting payload",
+            required = true,
+            content = @Content(schema = @Schema(implementation = ReportDefectRequest.class))
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Defect logged and maintenance issue created", content = @Content(schema = @Schema(implementation = MaintenanceIssueResponse.class))),
+            @ApiResponse(responseCode = "400", description = "VALIDATION_ERROR", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "404", description = "ROOM_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "409", description = "DEFECT_ALREADY_REPORTED", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @PostMapping(value = "/api/housekeeping/rooms/{roomNumber}/report-defect", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<JsonNode> reportDefect(
             @PathVariable String roomNumber,
@@ -552,53 +1192,127 @@ public class GatewayController {
         return postWithHeader(housekeepingClient, "/api/housekeeping/rooms/" + roomNumber + "/report-defect", request, "Idempotency-Key", idempotencyKey);
     }
 
-    @Operation(summary = "Cancel housekeeping queue item", tags = {"Housekeeping"})
+    @Operation(
+            operationId = "cancelHousekeepingCleaning",
+            summary = "Cancel housekeeping queue item",
+            tags = {"Housekeeping"},
+            description = "Roles: HOUSEKEEPING, MANAGER, ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Task removed from queue", content = @Content(schema = @Schema(implementation = CleaningTaskResponse.class))),
+            @ApiResponse(responseCode = "404", description = "ROOM_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "409", description = "TASK_CANNOT_BE_CANCELLED", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @PatchMapping("/api/housekeeping/queue/{roomNumber}/cancel")
     public ResponseEntity<JsonNode> cancelCleaning(@PathVariable String roomNumber) {
         return patch(housekeepingClient, "/api/housekeeping/queue/" + roomNumber + "/cancel", null);
     }
 
-    @Operation(summary = "Get cleaners", tags = {"Housekeeping"})
+    @Operation(
+            operationId = "listHousekeepingCleaners",
+            summary = "Get cleaners",
+            tags = {"Housekeeping"},
+            description = "Roles: HOUSEKEEPING, MANAGER, ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Cleaners staff list", content = @Content(array = @ArraySchema(schema = @Schema(implementation = String.class))))
+    })
     @GetMapping("/api/housekeeping/cleaners")
     public ResponseEntity<JsonNode> getCleaners() {
         return get(housekeepingClient, "/api/housekeeping/cleaners");
     }
 
     // -------------------------------------------------------------------------
-    // -------------------------------------------------------------------------
     // Room Service
     // -------------------------------------------------------------------------
-    @Operation(summary = "Get room service orders", tags = {"Room Service"})
+    @Operation(
+            operationId = "listRoomServiceOrders",
+            summary = "Get room service orders",
+            tags = {"Room Service"},
+            description = "Roles: ROOM_SERVICE, MANAGER, ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Room service orders list", content = @Content(array = @ArraySchema(schema = @Schema(implementation = RoomServiceOrderResponse.class))))
+    })
     @GetMapping("/api/room-service/orders")
     public ResponseEntity<JsonNode> getRoomServiceOrders() {
         return get(roomServiceClient, "/api/room-service/orders");
     }
 
-    @Operation(summary = "Get room service order by ID", tags = {"Room Service"})
+    @Operation(
+            operationId = "getRoomServiceOrder",
+            summary = "Get room service order by ID",
+            tags = {"Room Service"},
+            description = "Roles: ROOM_SERVICE, MANAGER, ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Room service order detail", content = @Content(schema = @Schema(implementation = RoomServiceOrderResponse.class))),
+            @ApiResponse(responseCode = "404", description = "ORDER_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @GetMapping("/api/room-service/orders/{orderId}")
     public ResponseEntity<JsonNode> getRoomServiceOrder(@PathVariable String orderId) {
         return get(roomServiceClient, "/api/room-service/orders/" + orderId);
     }
 
-    @Operation(summary = "Create room service order", tags = {"Room Service"})
+    @Operation(
+            operationId = "createRoomServiceOrder",
+            summary = "Create room service order",
+            tags = {"Room Service"},
+            description = "Roles: ROOM_SERVICE, MANAGER, ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Order created", content = @Content(schema = @Schema(implementation = RoomServiceOrderResponse.class))),
+            @ApiResponse(responseCode = "400", description = "VALIDATION_ERROR | INVALID_ORDER_ITEMS", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "404", description = "ROOM_NOT_FOUND | NO_ACTIVE_STAY", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "409", description = "ROOM_NOT_OCCUPIED", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @PostMapping(value = "/api/room-service/orders", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<JsonNode> createRoomServiceOrder(@RequestBody CreateOrderRequest request) {
         return post(roomServiceClient, "/api/room-service/orders", request);
     }
 
-    @Operation(summary = "Move room service order to next status", tags = {"Room Service"})
+    @Operation(
+            operationId = "advanceRoomServiceOrder",
+            summary = "Move room service order to next status",
+            tags = {"Room Service"},
+            description = "Roles: ROOM_SERVICE, MANAGER, ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Order status advanced", content = @Content(schema = @Schema(implementation = RoomServiceOrderResponse.class))),
+            @ApiResponse(responseCode = "404", description = "ORDER_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "409", description = "INVALID_STATUS_TRANSITION | ORDER_ALREADY_DELIVERED", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @PatchMapping("/api/room-service/orders/{orderId}/next")
     public ResponseEntity<JsonNode> nextOrderStatus(@PathVariable String orderId) {
         return patch(roomServiceClient, "/api/room-service/orders/" + orderId + "/next", null);
     }
 
-    @Operation(summary = "Cancel room service order", tags = {"Room Service"})
+    @Operation(
+            operationId = "cancelRoomServiceOrder",
+            summary = "Cancel room service order",
+            tags = {"Room Service"},
+            description = "Roles: ROOM_SERVICE, MANAGER, ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Order cancelled", content = @Content(schema = @Schema(implementation = RoomServiceOrderResponse.class))),
+            @ApiResponse(responseCode = "404", description = "ORDER_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "409", description = "ORDER_CANNOT_BE_CANCELLED", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @PatchMapping("/api/room-service/orders/{orderId}/cancel")
     public ResponseEntity<JsonNode> cancelOrder(@PathVariable String orderId) {
         return patch(roomServiceClient, "/api/room-service/orders/" + orderId + "/cancel", null);
     }
 
-    @Operation(summary = "Get room service charges by room", tags = {"Room Service"})
+    @Operation(
+            operationId = "getRoomServiceCharges",
+            summary = "Get room service charges by room",
+            tags = {"Room Service"},
+            description = "Roles: ROOM_SERVICE, RECEPTIONIST, MANAGER, ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Accumulated room service charges", content = @Content(schema = @Schema(implementation = RoomServiceChargesResponse.class))),
+            @ApiResponse(responseCode = "404", description = "ROOM_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @GetMapping("/api/room-service/charges/{roomNumber}")
     public ResponseEntity<JsonNode> getCharges(@PathVariable String roomNumber) {
         return get(roomServiceClient, "/api/room-service/charges/" + roomNumber);
@@ -607,37 +1321,96 @@ public class GatewayController {
     // -------------------------------------------------------------------------
     // Maintenance
     // -------------------------------------------------------------------------
-    @Operation(summary = "Get maintenance issues", tags = {"Maintenance"})
+    @Operation(
+            operationId = "listMaintenanceIssues",
+            summary = "Get maintenance issues",
+            tags = {"Maintenance"},
+            description = "Roles: MAINTENANCE, MANAGER, ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Maintenance issues list", content = @Content(array = @ArraySchema(schema = @Schema(implementation = MaintenanceIssueResponse.class))))
+    })
     @GetMapping("/api/maintenance/issues")
     public ResponseEntity<JsonNode> getMaintenanceIssues() {
         return get(maintenanceClient, "/api/maintenance/issues");
     }
 
-    @Operation(summary = "Get maintenance issue by ID", tags = {"Maintenance"})
+    @Operation(
+            operationId = "getMaintenanceIssue",
+            summary = "Get maintenance issue by ID",
+            tags = {"Maintenance"},
+            description = "Roles: MAINTENANCE, MANAGER, ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Maintenance issue detail", content = @Content(schema = @Schema(implementation = MaintenanceIssueResponse.class))),
+            @ApiResponse(responseCode = "404", description = "ISSUE_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @GetMapping("/api/maintenance/issues/{issueId}")
     public ResponseEntity<JsonNode> getMaintenanceIssue(@PathVariable String issueId) {
         return get(maintenanceClient, "/api/maintenance/issues/" + issueId);
     }
 
-    @Operation(summary = "Report maintenance issue", tags = {"Maintenance"})
+    @Operation(
+            operationId = "createMaintenanceIssue",
+            summary = "Report maintenance issue",
+            tags = {"Maintenance"},
+            description = "Roles: MAINTENANCE, MANAGER, ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Maintenance issue reported", content = @Content(schema = @Schema(implementation = MaintenanceIssueResponse.class))),
+            @ApiResponse(responseCode = "400", description = "VALIDATION_ERROR", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "404", description = "ROOM_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @PostMapping(value = "/api/maintenance/issues", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<JsonNode> reportMaintenanceIssue(@RequestBody CreateIssueRequest request) {
         return post(maintenanceClient, "/api/maintenance/issues", request);
     }
 
-    @Operation(summary = "Get maintenance priority queue", tags = {"Maintenance"})
+    @Operation(
+            operationId = "getMaintenanceQueue",
+            summary = "Get maintenance priority queue",
+            tags = {"Maintenance"},
+            description = "Roles: MAINTENANCE, MANAGER, ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Maintenance priority queue", content = @Content(array = @ArraySchema(schema = @Schema(implementation = MaintenanceIssueResponse.class))))
+    })
     @GetMapping("/api/maintenance/queue")
     public ResponseEntity<JsonNode> getMaintenanceQueue() {
         return get(maintenanceClient, "/api/maintenance/queue");
     }
 
-    @Operation(summary = "Process next maintenance queue item", tags = {"Maintenance"})
+    @Operation(
+            operationId = "processNextMaintenanceQueueItem",
+            summary = "Process next maintenance queue item",
+            tags = {"Maintenance"},
+            description = "Roles: MAINTENANCE, MANAGER, ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Next queue items processed", content = @Content(array = @ArraySchema(schema = @Schema(implementation = MaintenanceIssueResponse.class)))),
+            @ApiResponse(responseCode = "409", description = "QUEUE_EMPTY", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @PostMapping("/api/maintenance/queue/process-next")
     public ResponseEntity<JsonNode> processNextMaintenance() {
         return post(maintenanceClient, "/api/maintenance/queue/process-next", null);
     }
 
-    @Operation(summary = "Resolve maintenance issue", tags = {"Maintenance"})
+    @Operation(
+            operationId = "resolveMaintenanceIssue",
+            summary = "Resolve maintenance issue",
+            tags = {"Maintenance"},
+            description = "Roles: MAINTENANCE, MANAGER, ADMIN"
+    )
+    @io.swagger.v3.oas.annotations.parameters.RequestBody(
+            description = "Resolution note payload",
+            required = false,
+            content = @Content(schema = @Schema(implementation = ResolveIssueRequest.class))
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Issue resolved", content = @Content(schema = @Schema(implementation = MaintenanceIssueResponse.class))),
+            @ApiResponse(responseCode = "404", description = "ISSUE_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "409", description = "ISSUE_ALREADY_RESOLVED", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @PatchMapping("/api/maintenance/issues/{issueId}/resolve")
     public ResponseEntity<JsonNode> resolveMaintenanceIssue(
             @PathVariable String issueId,
@@ -646,6 +1419,22 @@ public class GatewayController {
         return patch(maintenanceClient, "/api/maintenance/issues/" + issueId + "/resolve", request);
     }
 
+    @Operation(
+            operationId = "resolveMaintenanceIssuePost",
+            summary = "Resolve maintenance issue (POST fallback)",
+            tags = {"Maintenance"},
+            description = "Roles: MAINTENANCE, MANAGER, ADMIN"
+    )
+    @io.swagger.v3.oas.annotations.parameters.RequestBody(
+            description = "Resolution note payload",
+            required = false,
+            content = @Content(schema = @Schema(implementation = ResolveIssueRequest.class))
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Issue resolved", content = @Content(schema = @Schema(implementation = MaintenanceIssueResponse.class))),
+            @ApiResponse(responseCode = "404", description = "ISSUE_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "409", description = "ISSUE_ALREADY_RESOLVED", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @PostMapping("/api/maintenance/issues/{issueId}/resolve")
     public ResponseEntity<JsonNode> resolveMaintenanceIssuePost(
             @PathVariable String issueId,
@@ -654,56 +1443,48 @@ public class GatewayController {
         return post(maintenanceClient, "/api/maintenance/issues/" + issueId + "/resolve", request);
     }
 
-    @Operation(summary = "Cancel maintenance issue", tags = {"Maintenance"})
+    @Operation(
+            operationId = "cancelMaintenanceIssue",
+            summary = "Cancel maintenance issue",
+            tags = {"Maintenance"},
+            description = "Roles: MAINTENANCE, MANAGER, ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Issue cancelled", content = @Content(schema = @Schema(implementation = MaintenanceIssueResponse.class))),
+            @ApiResponse(responseCode = "404", description = "ISSUE_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "409", description = "ISSUE_ALREADY_RESOLVED", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
     @PatchMapping("/api/maintenance/issues/{issueId}/cancel")
     public ResponseEntity<JsonNode> cancelMaintenanceIssue(@PathVariable String issueId) {
         return patch(maintenanceClient, "/api/maintenance/issues/" + issueId + "/cancel", null);
     }
 
-    @Operation(summary = "Get technicians", tags = {"Maintenance"})
+    @Operation(
+            operationId = "listMaintenanceTechnicians",
+            summary = "Get technicians",
+            tags = {"Maintenance"},
+            description = "Roles: MAINTENANCE, MANAGER, ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Technicians staff list", content = @Content(array = @ArraySchema(schema = @Schema(implementation = String.class))))
+    })
     @GetMapping("/api/maintenance/technicians")
     public ResponseEntity<JsonNode> getTechnicians() {
         return get(maintenanceClient, "/api/maintenance/technicians");
     }
 
     // -------------------------------------------------------------------------
-    // Dashboard
+    // Development & Demo Workflows
     // -------------------------------------------------------------------------
-    @Operation(summary = "Aggregate full operational snapshot", tags = {"Dashboard"})
-    @GetMapping("/api/dashboard/snapshot")
-    public ResponseEntity<JsonNode> dashboardSnapshot() {
-        ObjectNode body = objectMapper.createObjectNode();
-        body.set("rooms", getBody(receptionClient, "/api/reception/rooms"));
-        body.set("guests", getBody(receptionClient, "/api/reception/guests"));
-        body.set("roomServiceOrders", getBody(roomServiceClient, "/api/room-service/orders"));
-        body.set("maintenanceIssues", getBody(maintenanceClient, "/api/maintenance/issues"));
-        body.set("housekeepingQueue", getBody(housekeepingClient, "/api/housekeeping/queue"));
-        body.set("events", getBody(dashboardClient, "/api/dashboard/events"));
-        return ResponseEntity.ok(body);
-    }
-
-    @Operation(summary = "Get dashboard event history", tags = {"Dashboard"})
-    @GetMapping("/api/dashboard/events")
-    public ResponseEntity<JsonNode> getDashboardEvents() {
-        return get(dashboardClient, "/api/dashboard/events");
-    }
-
-    @Operation(summary = "Clear dashboard event history", tags = {"Dashboard"})
-    @DeleteMapping("/api/dashboard/events")
-    public ResponseEntity<JsonNode> clearDashboardEvents() {
-        return delete(dashboardClient, "/api/dashboard/events");
-    }
-
-    @Operation(summary = "Trigger dashboard persistent read-model bootstrap", tags = {"Dashboard"})
-    @PostMapping("/api/dashboard/bootstrap")
-    public ResponseEntity<JsonNode> triggerDashboardBootstrap() {
-        return post(dashboardClient, "/api/dashboard/bootstrap", null);
-    }
-
-    // -------------------------------------------------------------------------
-    // Demo endpoints
-    // -------------------------------------------------------------------------
-    @Operation(summary = "Development reset", tags = {"Gateway"})
+    @Operation(
+            operationId = "resetDemoData",
+            summary = "Development reset",
+            tags = {"Development / Demo"},
+            description = "Development only — not part of production API. Roles: ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Demo reset results across all services")
+    })
     @PostMapping("/api/demo/reset")
     public ResponseEntity<JsonNode> demoReset() {
         ObjectNode body = objectMapper.createObjectNode();
@@ -715,7 +1496,15 @@ public class GatewayController {
         return ResponseEntity.ok(body);
     }
 
-    @Operation(summary = "Development seed", tags = {"Gateway"})
+    @Operation(
+            operationId = "seedDemoData",
+            summary = "Development seed",
+            tags = {"Development / Demo"},
+            description = "Development only — not part of production API. Roles: ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Demo seed results across all services")
+    })
     @PostMapping("/api/demo/seed")
     public ResponseEntity<JsonNode> demoSeed() {
         ObjectNode body = objectMapper.createObjectNode();
@@ -727,19 +1516,43 @@ public class GatewayController {
         return ResponseEntity.ok(body);
     }
 
-    @Operation(summary = "Run TS-01 scenario", tags = {"Gateway"})
+    @Operation(
+            operationId = "runDemoTs01",
+            summary = "Run scenario TS-01 (Check-in)",
+            tags = {"Development / Demo"},
+            description = "Development only — not part of production API. Roles: ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Scenario execution result", content = @Content(schema = @Schema(implementation = CheckInResponse.class)))
+    })
     @PostMapping("/api/demo/run/ts-01")
     public ResponseEntity<JsonNode> runTs01() {
         return post(receptionClient, "/api/reception/check-in", checkInRequest("Alice Smith", "DOUBLE", 2, 3, "LIFT"));
     }
 
-    @Operation(summary = "Run TS-02 scenario", tags = {"Gateway"})
+    @Operation(
+            operationId = "runDemoTs02",
+            summary = "Run scenario TS-02 (Check-out)",
+            tags = {"Development / Demo"},
+            description = "Development only — not part of production API. Roles: ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Scenario execution result", content = @Content(schema = @Schema(implementation = CheckOutResponse.class)))
+    })
     @PostMapping("/api/demo/run/ts-02")
     public ResponseEntity<JsonNode> runTs02() {
         return post(receptionClient, "/api/reception/check-out/204", null);
     }
 
-    @Operation(summary = "Run TS-03 scenario", tags = {"Gateway"})
+    @Operation(
+            operationId = "runDemoTs03",
+            summary = "Run scenario TS-03 (Turnover flow)",
+            tags = {"Development / Demo"},
+            description = "Development only — not part of production API. Roles: ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Turnover workflow results")
+    })
     @PostMapping("/api/demo/run/ts-03")
     public ResponseEntity<JsonNode> runTs03() {
         ObjectNode body = objectMapper.createObjectNode();
@@ -750,7 +1563,15 @@ public class GatewayController {
         return ResponseEntity.ok(body);
     }
 
-    @Operation(summary = "Run TS-04 scenario", tags = {"Gateway"})
+    @Operation(
+            operationId = "runDemoTs04",
+            summary = "Run scenario TS-04 (Room service lifecycle)",
+            tags = {"Development / Demo"},
+            description = "Development only — not part of production API. Roles: ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Room service lifecycle results")
+    })
     @PostMapping("/api/demo/run/ts-04")
     public ResponseEntity<JsonNode> runTs04() {
         ObjectNode request = objectMapper.createObjectNode();
@@ -769,14 +1590,30 @@ public class GatewayController {
         return ResponseEntity.ok(body);
     }
 
-    @Operation(summary = "Run TS-05 scenario", tags = {"Gateway"})
+    @Operation(
+            operationId = "runDemoTs05",
+            summary = "Run scenario TS-05 (Defect ticket)",
+            tags = {"Development / Demo"},
+            description = "Development only — not part of production API. Roles: ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Maintenance defect issue", content = @Content(schema = @Schema(implementation = MaintenanceIssueResponse.class)))
+    })
     @PostMapping("/api/demo/run/ts-05")
     public ResponseEntity<JsonNode> runTs05() {
         CreateIssueRequest request = new CreateIssueRequest("115", "Broken shower", "CRITICAL");
         return post(maintenanceClient, "/api/maintenance/issues", request);
     }
 
-    @Operation(summary = "Run TS-06 scenario", tags = {"Gateway"})
+    @Operation(
+            operationId = "runDemoTs06",
+            summary = "Run scenario TS-06 (Concurrent check-in)",
+            tags = {"Development / Demo"},
+            description = "Development only — not part of production API. Roles: ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Concurrent check-in execution results")
+    })
     @PostMapping("/api/demo/run/ts-06")
     public ResponseEntity<JsonNode> runTs06(
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader
@@ -795,7 +1632,15 @@ public class GatewayController {
         return ResponseEntity.ok(body);
     }
 
-    @Operation(summary = "Run TS-07 scenario", tags = {"Gateway"})
+    @Operation(
+            operationId = "runDemoTs07",
+            summary = "Run scenario TS-07 (Overbooking validation)",
+            tags = {"Development / Demo"},
+            description = "Development only — not part of production API. Roles: ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Overbooking validation execution results")
+    })
     @PostMapping("/api/demo/run/ts-07")
     public ResponseEntity<JsonNode> runTs07() {
         safePostBody(receptionClient, "/api/reception/dev/reset", null);
@@ -805,7 +1650,15 @@ public class GatewayController {
         return ResponseEntity.ok(body);
     }
 
-    @Operation(summary = "Run TS-08 scenario", tags = {"Gateway"})
+    @Operation(
+            operationId = "runDemoTs08",
+            summary = "Run scenario TS-08 (Checkout invalid room)",
+            tags = {"Development / Demo"},
+            description = "Development only — not part of production API. Roles: ADMIN"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Invalid checkout execution results")
+    })
     @PostMapping("/api/demo/run/ts-08")
     public ResponseEntity<JsonNode> runTs08() {
         ObjectNode body = objectMapper.createObjectNode();

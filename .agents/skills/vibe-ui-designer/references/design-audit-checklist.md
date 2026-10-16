@@ -1,0 +1,27 @@
+# 📋 25-Point God-Level UI/UX Audit Checklist
+
+- [ ] 1. No Flat `#111` or `#222` Grays
+- [ ] 2. Ambient Lighting & Radial Gradient Accents
+- [ ] 3. Translucency & `backdrop-filter: blur(...)`
+- [ ] 4. Subtle 1px Border Radiance (`border-white/10`)
+- [ ] 5. WCAG AAA/AA Contrast Compliance (>= 4.5:1)
+- [ ] 6. Dual Font Pairing (Sans Interface + Monospace Data)
+- [ ] 7. Clear Weight Scale (800 / 600 / 400)
+- [ ] 8. Gradient Text Accents on High-Value Headers
+- [ ] 9. Strict Monospace for Numbers, Timestamps, and Badges
+- [ ] 10. Letter Spacing (`tracking-wider` on Uppercase Labels)
+- [ ] 11. Asymmetric Bento Grid Hierarchy
+- [ ] 12. Generous Spacing Scale (`p-6` to `p-8`)
+- [ ] 13. Responsive Mobile to Desktop Breakpoints
+- [ ] 14. Zero Unintentional Horizontal Overflow
+- [ ] 15. Tactile Hover Lifts (`hover:-translate-y-1`)
+- [ ] 16. Active Click Compressions (`active:scale-95`)
+- [ ] 17. Glowing Focus Rings on Inputs
+- [ ] 18. Pulsing Status Dots (`animate-ping`)
+- [ ] 19. Instant Copy-to-Clipboard Visual Feedback
+- [ ] 20. Meaningful Empty States with Icons
+- [ ] 21. Shimmer Loading Skeletons
+- [ ] 22. Crisp SVG Icons Accompanying Actions
+- [ ] 23. Floating Glass Toast Notifications
+- [ ] 24. Keyboard Dismissal (`ESC` on Modals/Palettes)
+- [ ] 25. 100% Clean Console & Zero Layout Shift (CLS)
