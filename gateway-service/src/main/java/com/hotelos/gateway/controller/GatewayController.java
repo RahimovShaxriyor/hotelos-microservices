@@ -1480,7 +1480,7 @@ public class GatewayController {
             operationId = "resetDemoData",
             summary = "Development reset",
             tags = {"Development / Demo"},
-            description = "Development only — not part of production API. Roles: ADMIN"
+            description = "Development only — blocked by production edge. Roles: ADMIN"
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Demo reset results across all services")
@@ -1500,7 +1500,7 @@ public class GatewayController {
             operationId = "seedDemoData",
             summary = "Development seed",
             tags = {"Development / Demo"},
-            description = "Development only — not part of production API. Roles: ADMIN"
+            description = "Development only — blocked by production edge. Roles: ADMIN"
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Demo seed results across all services")
@@ -1520,7 +1520,7 @@ public class GatewayController {
             operationId = "runDemoTs01",
             summary = "Run scenario TS-01 (Check-in)",
             tags = {"Development / Demo"},
-            description = "Development only — not part of production API. Roles: ADMIN"
+            description = "Development only — blocked by production edge. Roles: ADMIN"
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Scenario execution result", content = @Content(schema = @Schema(implementation = CheckInResponse.class)))
@@ -1534,7 +1534,7 @@ public class GatewayController {
             operationId = "runDemoTs02",
             summary = "Run scenario TS-02 (Check-out)",
             tags = {"Development / Demo"},
-            description = "Development only — not part of production API. Roles: ADMIN"
+            description = "Development only — blocked by production edge. Roles: ADMIN"
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Scenario execution result", content = @Content(schema = @Schema(implementation = CheckOutResponse.class)))
@@ -1548,7 +1548,7 @@ public class GatewayController {
             operationId = "runDemoTs03",
             summary = "Run scenario TS-03 (Turnover flow)",
             tags = {"Development / Demo"},
-            description = "Development only — not part of production API. Roles: ADMIN"
+            description = "Development only — blocked by production edge. Roles: ADMIN"
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Turnover workflow results")
@@ -1567,7 +1567,7 @@ public class GatewayController {
             operationId = "runDemoTs04",
             summary = "Run scenario TS-04 (Room service lifecycle)",
             tags = {"Development / Demo"},
-            description = "Development only — not part of production API. Roles: ADMIN"
+            description = "Development only — blocked by production edge. Roles: ADMIN"
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Room service lifecycle results")
@@ -1594,7 +1594,7 @@ public class GatewayController {
             operationId = "runDemoTs05",
             summary = "Run scenario TS-05 (Defect ticket)",
             tags = {"Development / Demo"},
-            description = "Development only — not part of production API. Roles: ADMIN"
+            description = "Development only — blocked by production edge. Roles: ADMIN"
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Maintenance defect issue", content = @Content(schema = @Schema(implementation = MaintenanceIssueResponse.class)))
@@ -1609,7 +1609,7 @@ public class GatewayController {
             operationId = "runDemoTs06",
             summary = "Run scenario TS-06 (Concurrent check-in)",
             tags = {"Development / Demo"},
-            description = "Development only — not part of production API. Roles: ADMIN"
+            description = "Development only — blocked by production edge. Roles: ADMIN"
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Concurrent check-in execution results")
@@ -1636,7 +1636,7 @@ public class GatewayController {
             operationId = "runDemoTs07",
             summary = "Run scenario TS-07 (Overbooking validation)",
             tags = {"Development / Demo"},
-            description = "Development only — not part of production API. Roles: ADMIN"
+            description = "Development only — blocked by production edge. Roles: ADMIN"
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Overbooking validation execution results")
@@ -1654,7 +1654,7 @@ public class GatewayController {
             operationId = "runDemoTs08",
             summary = "Run scenario TS-08 (Checkout invalid room)",
             tags = {"Development / Demo"},
-            description = "Development only — not part of production API. Roles: ADMIN"
+            description = "Development only — blocked by production edge. Roles: ADMIN"
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Invalid checkout execution results")

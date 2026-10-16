@@ -23,3 +23,6 @@ pgdata/
 secrets/
 *.pem
 *.key
+
+# Local AI workspace customizations
+.agents/

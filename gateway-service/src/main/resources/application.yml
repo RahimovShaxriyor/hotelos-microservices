@@ -19,7 +19,7 @@ springdoc:
     tags-sorter: alpha
     doc-expansion: none
     filter: true
-    display-operation-id: true
+    display-operation-id: false
     display-request-duration: true
     enabled: ${HOTELOS_SWAGGER_ENABLED:true}
   api-docs:

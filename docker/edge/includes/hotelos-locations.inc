@@ -14,21 +14,23 @@ proxy_set_header X-Forwarded-Port $server_port;
 proxy_set_header X-HotelOS-Client-IP "";
 
 # Swagger / OpenAPI lockdown for production
-location /swagger-ui/ {
+location ^~ /swagger-ui {
     return 404;
 }
-location = /swagger-ui.html {
-    return 404;
-}
-location /v3/api-docs/ {
-    return 404;
-}
-location = /v3/api-docs {
+location ^~ /v3/api-docs {
     return 404;
 }
 
 # Actuator lockdown
 location ^~ /actuator {
+    return 404;
+}
+
+# Dev/demo endpoints lockdown for production edge
+location ^~ /api/demo/ {
+    return 404;
+}
+location = /api/demo {
     return 404;
 }
 

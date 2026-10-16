@@ -1169,7 +1169,7 @@ All client communication, frontends, and integrations must align with these HTTP
 ### 13. Development / Demo
 
 > [!IMPORTANT]
-> Development and demonstration workflows only — not part of production client API. Roles: ADMIN.
+> Development/demo workflows. Available only through development Gateway. Blocked by production edge. Not part of production client API. Roles: ADMIN.
 
 #### `POST /api/demo/reset`
 - **Summary**: Reset hotel demonstration state
