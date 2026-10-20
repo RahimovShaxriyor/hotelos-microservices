@@ -5,6 +5,7 @@ import com.hotelos.reception.domain.HousekeepingStatus;
 import com.hotelos.reception.persistence.entity.RoomEntity;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -17,7 +18,7 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface RoomRepository extends JpaRepository<RoomEntity, String> {
+public interface RoomRepository extends JpaRepository<RoomEntity, String>, JpaSpecificationExecutor<RoomEntity> {
 
     List<RoomEntity> findAllByOrderByRoomNumberAsc();
 
@@ -25,9 +26,13 @@ public interface RoomRepository extends JpaRepository<RoomEntity, String> {
     @Query("SELECT r FROM RoomEntity r WHERE r.roomNumber = :roomNumber")
     Optional<RoomEntity> findByRoomNumberForUpdate(@Param("roomNumber") String roomNumber);
 
+    @Query(value = "SELECT pg_advisory_xact_lock(8081100, hashtext(:roomNumber))", nativeQuery = true)
+    void acquireRoomCreationAdvisoryLock(@Param("roomNumber") String roomNumber);
+
     @Query(value = """
         SELECT * FROM reception.rooms
-        WHERE occupancy_status = 'VACANT'
+        WHERE active = TRUE
+          AND occupancy_status = 'VACANT'
           AND housekeeping_status = 'CLEAN'
           AND engineering_status = 'OPERATIONAL'
           AND turnover_pending = FALSE
@@ -48,7 +53,8 @@ public interface RoomRepository extends JpaRepository<RoomEntity, String> {
 
     @Query(value = """
         SELECT r.* FROM reception.rooms r
-        WHERE r.occupancy_status = 'VACANT'
+        WHERE r.active = TRUE
+          AND r.occupancy_status = 'VACANT'
           AND r.housekeeping_status = 'CLEAN'
           AND r.engineering_status = 'OPERATIONAL'
           AND r.turnover_pending = FALSE

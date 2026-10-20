@@ -394,6 +394,166 @@ public class GatewayController {
         return ResponseEntity.noContent().build();
     }
 
+
+    // -------------------------------------------------------------------------
+    // Room Administration
+    // -------------------------------------------------------------------------
+    @Operation(
+            operationId = "createRoom",
+            summary = "Create physical room",
+            tags = {"Room Administration"},
+            description = "Roles: ADMIN, OWNER"
+    )
+    @io.swagger.v3.oas.annotations.parameters.RequestBody(
+            description = "Physical room creation payload",
+            required = true,
+            content = @Content(schema = @Schema(implementation = CreateRoomRequest.class))
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Room created", content = @Content(schema = @Schema(implementation = RoomAdminResponse.class))),
+            @ApiResponse(responseCode = "400", description = "VALIDATION_ERROR", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "409", description = "ROOM_ALREADY_EXISTS", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
+    @PostMapping(value = "/api/admin/rooms", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<JsonNode> createRoom(
+            @RequestBody JsonNode request,
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader
+    ) {
+        return postWithAuth(receptionClient, "/api/admin/rooms", request, authHeader);
+    }
+
+    @Operation(
+            operationId = "listAdminRooms",
+            summary = "List physical rooms with administrative filters",
+            tags = {"Room Administration"},
+            description = "Roles: ADMIN, OWNER"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Administrative room list", content = @Content(schema = @Schema(implementation = RoomAdminPageResponse.class)))
+    })
+    @GetMapping(value = "/api/admin/rooms", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<JsonNode> listAdminRooms(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) Boolean active,
+            @RequestParam(required = false) String roomType,
+            @RequestParam(required = false) Integer floor,
+            @RequestParam(required = false) String search,
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader
+    ) {
+        UriComponentsBuilder builder = UriComponentsBuilder.fromPath("/api/admin/rooms");
+        builder.queryParam("page", page);
+        builder.queryParam("size", size);
+        if (active != null) {
+            builder.queryParam("active", active);
+        }
+        addQueryParam(builder, "roomType", roomType);
+        if (floor != null) {
+            builder.queryParam("floor", floor);
+        }
+        addQueryParam(builder, "search", search);
+        return getWithAuth(receptionClient, builder.build().toUriString(), authHeader);
+    }
+
+    @Operation(
+            operationId = "getAdminRoom",
+            summary = "Get physical room administrative details",
+            tags = {"Room Administration"},
+            description = "Roles: ADMIN, OWNER"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Room details", content = @Content(schema = @Schema(implementation = RoomAdminResponse.class))),
+            @ApiResponse(responseCode = "404", description = "ROOM_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
+    @GetMapping(value = "/api/admin/rooms/{roomNumber}", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<JsonNode> getAdminRoom(
+            @PathVariable String roomNumber,
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader
+    ) {
+        return getWithAuth(receptionClient, "/api/admin/rooms/" + roomNumber, authHeader);
+    }
+
+    @Operation(
+            operationId = "updateRoom",
+            summary = "Update room floor, proximity, or nightly rate",
+            tags = {"Room Administration"},
+            description = "Roles: ADMIN, OWNER"
+    )
+    @io.swagger.v3.oas.annotations.parameters.RequestBody(
+            description = "Room update payload",
+            required = true,
+            content = @Content(schema = @Schema(implementation = UpdateRoomRequest.class))
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Room updated", content = @Content(schema = @Schema(implementation = RoomAdminResponse.class))),
+            @ApiResponse(responseCode = "400", description = "VALIDATION_ERROR", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "404", description = "ROOM_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
+    @PatchMapping(value = "/api/admin/rooms/{roomNumber}", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<JsonNode> updateRoom(
+            @PathVariable String roomNumber,
+            @RequestBody JsonNode request,
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader
+    ) {
+        return patchWithAuth(receptionClient, "/api/admin/rooms/" + roomNumber, request, authHeader);
+    }
+
+    @Operation(
+            operationId = "activateRoom",
+            summary = "Activate room in hotel inventory",
+            tags = {"Room Administration"},
+            description = "Roles: ADMIN, OWNER"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Room activated", content = @Content(schema = @Schema(implementation = RoomAdminResponse.class))),
+            @ApiResponse(responseCode = "404", description = "ROOM_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "409", description = "ROOM_ALREADY_ACTIVE", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
+    @PostMapping(value = "/api/admin/rooms/{roomNumber}/activate", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<JsonNode> activateRoom(
+            @PathVariable String roomNumber,
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader
+    ) {
+        return postWithAuth(receptionClient, "/api/admin/rooms/" + roomNumber + "/activate", null, authHeader);
+    }
+
+    @Operation(
+            operationId = "deactivateRoom",
+            summary = "Deactivate room from active hotel inventory",
+            tags = {"Room Administration"},
+            description = "Roles: ADMIN, OWNER"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Room deactivated", content = @Content(schema = @Schema(implementation = RoomAdminResponse.class))),
+            @ApiResponse(responseCode = "404", description = "ROOM_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse"))),
+            @ApiResponse(responseCode = "409", description = "ROOM_ALREADY_INACTIVE | ROOM_HAS_ACTIVE_STAY | ROOM_HAS_FUTURE_RESERVATION | ROOM_TURNOVER_IN_PROGRESS", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
+    @PostMapping(value = "/api/admin/rooms/{roomNumber}/deactivate", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<JsonNode> deactivateRoom(
+            @PathVariable String roomNumber,
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader
+    ) {
+        return postWithAuth(receptionClient, "/api/admin/rooms/" + roomNumber + "/deactivate", null, authHeader);
+    }
+
+    @Operation(
+            operationId = "reconcileRoomOccupancy",
+            summary = "Reconcile room physical occupancy against active stays",
+            tags = {"Room Administration"},
+            description = "Roles: ADMIN, OWNER"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Occupancy reconciled", content = @Content(schema = @Schema(implementation = RoomReconcileResponse.class))),
+            @ApiResponse(responseCode = "404", description = "ROOM_NOT_FOUND", content = @Content(schema = @Schema(ref = "#/components/schemas/ApiErrorResponse")))
+    })
+    @PostMapping(value = "/api/admin/rooms/{roomNumber}/reconcile-occupancy", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<JsonNode> reconcileRoomOccupancy(
+            @PathVariable String roomNumber,
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader
+    ) {
+        return postWithAuth(receptionClient, "/api/admin/rooms/" + roomNumber + "/reconcile-occupancy", null, authHeader);
+    }
+
     // -------------------------------------------------------------------------
     // Dashboard
     // -------------------------------------------------------------------------
@@ -1876,6 +2036,24 @@ public class GatewayController {
 
     private ResponseEntity<JsonNode> putWithAuth(RestClient client, String uri, Object body, String authHeader) {
         RestClient.RequestBodySpec request = client.put().uri(uri);
+        if (authHeader != null && !authHeader.isBlank()) {
+            request.header(HttpHeaders.AUTHORIZATION, authHeader);
+        }
+        ResponseEntity<JsonNode> downstream;
+        if (body == null) {
+            downstream = request.retrieve().toEntity(JsonNode.class);
+        } else {
+            downstream = request
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .toEntity(JsonNode.class);
+        }
+        return cleanGatewayResponse(downstream);
+    }
+
+    private ResponseEntity<JsonNode> patchWithAuth(RestClient client, String uri, Object body, String authHeader) {
+        RestClient.RequestBodySpec request = client.patch().uri(uri);
         if (authHeader != null && !authHeader.isBlank()) {
             request.header(HttpHeaders.AUTHORIZATION, authHeader);
         }

@@ -70,8 +70,9 @@ public class SecurityConfig {
                         ).permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/gateway/health", "/api/gateway/info", "/actuator/health").permitAll()
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
-                        // Admin & Owner staff governance endpoints
+                        // Admin & Owner staff governance and room administration endpoints
                         .requestMatchers("/api/admin/users/**").hasAnyRole("ADMIN", "OWNER")
+                        .requestMatchers("/api/admin/rooms/**").hasAnyRole("ADMIN", "OWNER")
                         // Admin-only management and dev/demo endpoints
                         .requestMatchers(HttpMethod.GET, "/api/gateway/routes").hasRole("ADMIN")
                         .requestMatchers("/api/demo/**").hasRole("ADMIN")

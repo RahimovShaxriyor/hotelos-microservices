@@ -21,6 +21,7 @@ public class Room {
     private String turnoverCorrelationId;
     private Instant occupancyChangedAt;
     private Instant turnoverChangedAt;
+    private boolean active = true;
 
     public Room(String roomNumber, int floor, RoomType type, String proximity, BigDecimal nightlyRate,
                 OccupancyStatus occupancyStatus, HousekeepingStatus housekeepingStatus, EngineeringStatus engineeringStatus,
@@ -34,13 +35,22 @@ public class Room {
         this(roomNumber, floor, type, proximity, nightlyRate, currency, occupancyStatus, housekeepingStatus, engineeringStatus,
                 cleanSince, turnoverPending, turnoverCorrelationId,
                 cleanSince != null ? cleanSince : Instant.now(),
-                cleanSince != null ? cleanSince : Instant.now());
+                cleanSince != null ? cleanSince : Instant.now(),
+                true);
     }
 
     public Room(String roomNumber, int floor, RoomType type, String proximity, BigDecimal nightlyRate, String currency,
                 OccupancyStatus occupancyStatus, HousekeepingStatus housekeepingStatus, EngineeringStatus engineeringStatus,
                 Instant cleanSince, boolean turnoverPending, String turnoverCorrelationId,
                 Instant occupancyChangedAt, Instant turnoverChangedAt) {
+        this(roomNumber, floor, type, proximity, nightlyRate, currency, occupancyStatus, housekeepingStatus, engineeringStatus,
+                cleanSince, turnoverPending, turnoverCorrelationId, occupancyChangedAt, turnoverChangedAt, true);
+    }
+
+    public Room(String roomNumber, int floor, RoomType type, String proximity, BigDecimal nightlyRate, String currency,
+                OccupancyStatus occupancyStatus, HousekeepingStatus housekeepingStatus, EngineeringStatus engineeringStatus,
+                Instant cleanSince, boolean turnoverPending, String turnoverCorrelationId,
+                Instant occupancyChangedAt, Instant turnoverChangedAt, boolean active) {
         this.roomNumber = roomNumber;
         this.floor = floor;
         this.type = type;
@@ -55,6 +65,7 @@ public class Room {
         this.turnoverCorrelationId = turnoverCorrelationId;
         this.occupancyChangedAt = occupancyChangedAt != null ? occupancyChangedAt : Instant.now();
         this.turnoverChangedAt = turnoverChangedAt != null ? turnoverChangedAt : Instant.now();
+        this.active = active;
     }
 
     public static Room fromEntity(RoomEntity entity) {
@@ -73,7 +84,8 @@ public class Room {
                 entity.isTurnoverPending(),
                 entity.getTurnoverCorrelationId(),
                 entity.getOccupancyChangedAt(),
-                entity.getTurnoverChangedAt()
+                entity.getTurnoverChangedAt(),
+                entity.isActive()
         );
     }
 
@@ -83,6 +95,8 @@ public class Room {
     public String getProximity() { return proximity; }
     public BigDecimal getNightlyRate() { return nightlyRate; }
     public String getCurrency() { return currency; }
+    public boolean isActive() { return active; }
+    public void setActive(boolean active) { this.active = active; }
     public OccupancyStatus getOccupancyStatus() { return occupancyStatus; }
     public HousekeepingStatus getHousekeepingStatus() { return housekeepingStatus; }
     public EngineeringStatus getEngineeringStatus() { return engineeringStatus; }
@@ -93,7 +107,8 @@ public class Room {
     public Instant getTurnoverChangedAt() { return turnoverChangedAt; }
 
     public boolean isSellable() {
-        return occupancyStatus == OccupancyStatus.VACANT
+        return active
+                && occupancyStatus == OccupancyStatus.VACANT
                 && housekeepingStatus == HousekeepingStatus.CLEAN
                 && engineeringStatus == EngineeringStatus.OPERATIONAL
                 && !turnoverPending;

@@ -2,7 +2,7 @@
 
 ## Canonical Gateway API (Port 8090)
 
-This matrix defines the authoritative contract for all 83 externally accessible HotelOS Gateway endpoints.
+This matrix defines the authoritative contract for all 90 externally accessible HotelOS Gateway endpoints.
 All client communication, frontends, and integrations must align with these HTTP methods, success DTOs, and exact business error codes.
 
 ---
@@ -23,6 +23,13 @@ All client communication, frontends, and integrations must align with these HTTP
 | `POST` | `/api/admin/users/{id}/enable` | 200 `StaffUserSummaryResponse` | `ACCOUNT_ALREADY_ACTIVE` | `UNAUTHORIZED` | `ACCESS_DENIED` | `USER_NOT_FOUND` | — |
 | `PUT` | `/api/admin/users/{id}/roles` | 200 `StaffUserDetailResponse` | `VALIDATION_ERROR` \| `CANNOT_DEMOTE_SELF` \| `ROLE_NOT_ASSIGNABLE` | `UNAUTHORIZED` | `ACCESS_DENIED` | `USER_NOT_FOUND` | `CANNOT_REMOVE_LAST_ADMIN` \| `CANNOT_REMOVE_LAST_OWNER` |
 | `POST` | `/api/admin/users/{id}/revoke-sessions` | 204 No Content | — | `UNAUTHORIZED` | `ACCESS_DENIED` | `USER_NOT_FOUND` | — |
+| `POST` | `/api/admin/rooms` | 201 `RoomAdminResponse` | `VALIDATION_ERROR` | `UNAUTHORIZED` | `ACCESS_DENIED` | — | `ROOM_ALREADY_EXISTS` |
+| `GET` | `/api/admin/rooms` | 200 `PageResponse<RoomAdminResponse>` | — | `UNAUTHORIZED` | `ACCESS_DENIED` | — | — |
+| `GET` | `/api/admin/rooms/{roomNumber}` | 200 `RoomAdminResponse` | — | `UNAUTHORIZED` | `ACCESS_DENIED` | `ROOM_NOT_FOUND` | — |
+| `PATCH` | `/api/admin/rooms/{roomNumber}` | 200 `RoomAdminResponse` | `VALIDATION_ERROR` | `UNAUTHORIZED` | `ACCESS_DENIED` | `ROOM_NOT_FOUND` | — |
+| `POST` | `/api/admin/rooms/{roomNumber}/activate` | 200 `RoomAdminResponse` | — | `UNAUTHORIZED` | `ACCESS_DENIED` | `ROOM_NOT_FOUND` | `ROOM_ALREADY_ACTIVE` |
+| `POST` | `/api/admin/rooms/{roomNumber}/deactivate` | 200 `RoomAdminResponse` | — | `UNAUTHORIZED` | `ACCESS_DENIED` | `ROOM_NOT_FOUND` | `ROOM_ALREADY_INACTIVE` \| `ROOM_HAS_ACTIVE_STAY` \| `ROOM_HAS_FUTURE_RESERVATION` \| `ROOM_TURNOVER_IN_PROGRESS` |
+| `POST` | `/api/admin/rooms/{roomNumber}/reconcile-occupancy` | 200 `RoomReconcileResponse` | — | `UNAUTHORIZED` | `ACCESS_DENIED` | `ROOM_NOT_FOUND` | — |
 | `POST` | `/api/ws/tickets/dashboard` | 200 `WebSocketTicketResponse` | — | `UNAUTHORIZED` | `ACCESS_DENIED` | — | — |
 | `GET` | `/api/reception/rooms` | 200 `List<Room>` | — | `UNAUTHORIZED` | `ACCESS_DENIED` | — | — |
 | `GET` | `/api/reception/rooms/{roomNumber}` | 200 `Room` | — | `UNAUTHORIZED` | `ACCESS_DENIED` | `ROOM_NOT_FOUND` | — |
@@ -277,7 +284,119 @@ All client communication, frontends, and integrations must align with these HTTP
 
 ---
 
-### 3. Dashboard
+### 3. Room Administration
+
+#### `POST /api/admin/rooms`
+- **Summary**: Create physical room
+- **OperationId**: `createRoom`
+- **Tag**: `Room Administration`
+- **Security**: `staffBearerAuth` (ADMIN, OWNER)
+- **Request Body**: `CreateRoomRequest`
+  - `roomNumber` (string, required)
+  - `floor` (integer, required)
+  - `roomType` (string, required: SINGLE, DOUBLE, SUITE, ACCESSIBLE)
+  - `proximity` (string, required: LIFT, STAIRS, QUIET, VIEW)
+  - `nightlyRate` (number, required)
+  - `currency` (string, optional: ISO-4217 code)
+- **Responses**:
+  - `201`: `RoomAdminResponse`
+  - `400`: `VALIDATION_ERROR`
+  - `401`: `UNAUTHORIZED`
+  - `403`: `ACCESS_DENIED`
+  - `409`: `ROOM_ALREADY_EXISTS`
+
+#### `GET /api/admin/rooms`
+- **Summary**: List physical rooms with administrative filters
+- **OperationId**: `listAdminRooms`
+- **Tag**: `Room Administration`
+- **Security**: `staffBearerAuth` (ADMIN, OWNER)
+- **Query Parameters**:
+  - `page` (integer, optional, default: 0)
+  - `size` (integer, optional, default: 20)
+  - `active` (boolean, optional)
+  - `roomType` (string, optional)
+  - `floor` (integer, optional)
+  - `search` (string, optional)
+- **Responses**:
+  - `200`: `PageResponse<RoomAdminResponse>`
+  - `401`: `UNAUTHORIZED`
+  - `403`: `ACCESS_DENIED`
+
+#### `GET /api/admin/rooms/{roomNumber}`
+- **Summary**: Get physical room administrative details
+- **OperationId**: `getAdminRoom`
+- **Tag**: `Room Administration`
+- **Security**: `staffBearerAuth` (ADMIN, OWNER)
+- **Path Parameters**:
+  - `roomNumber` (string, required)
+- **Responses**:
+  - `200`: `RoomAdminResponse`
+  - `401`: `UNAUTHORIZED`
+  - `403`: `ACCESS_DENIED`
+  - `404`: `ROOM_NOT_FOUND`
+
+#### `PATCH /api/admin/rooms/{roomNumber}`
+- **Summary**: Update room floor, proximity, or nightly rate
+- **OperationId**: `updateRoom`
+- **Tag**: `Room Administration`
+- **Security**: `staffBearerAuth` (ADMIN, OWNER)
+- **Path Parameters**:
+  - `roomNumber` (string, required)
+- **Request Body**: `UpdateRoomRequest`
+  - `floor` (integer, optional)
+  - `proximity` (string, optional)
+  - `nightlyRate` (number, optional)
+- **Responses**:
+  - `200`: `RoomAdminResponse`
+  - `400`: `VALIDATION_ERROR`
+  - `401`: `UNAUTHORIZED`
+  - `403`: `ACCESS_DENIED`
+  - `404`: `ROOM_NOT_FOUND`
+
+#### `POST /api/admin/rooms/{roomNumber}/activate`
+- **Summary**: Activate room in hotel inventory
+- **OperationId**: `activateRoom`
+- **Tag**: `Room Administration`
+- **Security**: `staffBearerAuth` (ADMIN, OWNER)
+- **Path Parameters**:
+  - `roomNumber` (string, required)
+- **Responses**:
+  - `200`: `RoomAdminResponse`
+  - `401`: `UNAUTHORIZED`
+  - `403`: `ACCESS_DENIED`
+  - `404`: `ROOM_NOT_FOUND`
+  - `409`: `ROOM_ALREADY_ACTIVE`
+
+#### `POST /api/admin/rooms/{roomNumber}/deactivate`
+- **Summary**: Deactivate room from active hotel inventory
+- **OperationId**: `deactivateRoom`
+- **Tag**: `Room Administration`
+- **Security**: `staffBearerAuth` (ADMIN, OWNER)
+- **Path Parameters**:
+  - `roomNumber` (string, required)
+- **Responses**:
+  - `200`: `RoomAdminResponse`
+  - `401`: `UNAUTHORIZED`
+  - `403`: `ACCESS_DENIED`
+  - `404`: `ROOM_NOT_FOUND`
+  - `409`: `ROOM_ALREADY_INACTIVE` | `ROOM_HAS_ACTIVE_STAY` | `ROOM_HAS_FUTURE_RESERVATION` | `ROOM_TURNOVER_IN_PROGRESS`
+
+#### `POST /api/admin/rooms/{roomNumber}/reconcile-occupancy`
+- **Summary**: Reconcile room physical occupancy against active stays
+- **OperationId**: `reconcileRoomOccupancy`
+- **Tag**: `Room Administration`
+- **Security**: `staffBearerAuth` (ADMIN, OWNER)
+- **Path Parameters**:
+  - `roomNumber` (string, required)
+- **Responses**:
+  - `200`: `RoomReconcileResponse`
+  - `401`: `UNAUTHORIZED`
+  - `403`: `ACCESS_DENIED`
+  - `404`: `ROOM_NOT_FOUND`
+
+---
+
+### 4. Dashboard
 
 #### `POST /api/ws/tickets/dashboard`
 - **Summary**: Issue dashboard WebSocket ticket
@@ -331,7 +450,7 @@ All client communication, frontends, and integrations must align with these HTTP
 
 ---
 
-### 4. Reception — Rooms
+### 5. Reception — Rooms
 
 #### `GET /api/reception/rooms`
 - **Summary**: List all hotel rooms
@@ -371,7 +490,7 @@ All client communication, frontends, and integrations must align with these HTTP
 
 ---
 
-### 5. Reception — Stays
+### 6. Reception — Stays
 
 #### `POST /api/reception/check-in`
 - **Summary**: Walk-in guest check-in
@@ -490,7 +609,7 @@ All client communication, frontends, and integrations must align with these HTTP
 
 ---
 
-### 6. Reception — Guests
+### 7. Reception — Guests
 
 #### `GET /api/reception/guests`
 - **Summary**: List active hotel guests
@@ -597,7 +716,7 @@ All client communication, frontends, and integrations must align with these HTTP
 
 ---
 
-### 7. Reception — Reservations
+### 8. Reception — Reservations
 
 #### `POST /api/reception/reservations`
 - **Summary**: Create reservation
@@ -749,7 +868,7 @@ All client communication, frontends, and integrations must align with these HTTP
 
 ---
 
-### 8. Reception — Folio
+### 9. Reception — Folio
 
 #### `POST /api/reception/bills/{roomNumber}/calculate`
 - **Summary**: Calculate current room bill
@@ -832,7 +951,7 @@ All client communication, frontends, and integrations must align with these HTTP
 
 ---
 
-### 9. Housekeeping
+### 10. Housekeeping
 
 #### `GET /api/housekeeping/queue`
 - **Summary**: Get housekeeping queue
@@ -931,7 +1050,7 @@ All client communication, frontends, and integrations must align with these HTTP
 
 ---
 
-### 10. Room Service
+### 11. Room Service
 
 #### `GET /api/room-service/orders`
 - **Summary**: Get room service orders
@@ -1018,7 +1137,7 @@ All client communication, frontends, and integrations must align with these HTTP
 
 ---
 
-### 11. Maintenance
+### 12. Maintenance
 
 #### `GET /api/maintenance/issues`
 - **Summary**: Get maintenance issues
@@ -1136,7 +1255,7 @@ All client communication, frontends, and integrations must align with these HTTP
 
 ---
 
-### 12. System
+### 13. System
 
 #### `GET /api/gateway/health`
 - **Summary**: Gateway health check
@@ -1166,7 +1285,7 @@ All client communication, frontends, and integrations must align with these HTTP
 
 ---
 
-### 13. Development / Demo
+### 14. Development / Demo
 
 > [!IMPORTANT]
 > Development/demo workflows. Available only through development Gateway. Blocked by production edge. Not part of production client API. Roles: ADMIN.

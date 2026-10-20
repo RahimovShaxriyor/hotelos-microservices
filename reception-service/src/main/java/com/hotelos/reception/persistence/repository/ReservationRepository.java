@@ -19,4 +19,15 @@ public interface ReservationRepository extends JpaRepository<ReservationEntity, 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT r FROM ReservationEntity r WHERE r.id = :id")
     Optional<ReservationEntity> findByIdForUpdate(@Param("id") UUID id);
+
+    @Query("""
+        SELECT COUNT(r) > 0 FROM ReservationEntity r
+        WHERE r.status = com.hotelos.reception.domain.ReservationStatus.CONFIRMED
+          AND r.assignedRoomNumber = :roomNumber
+          AND r.departureDate >= :hotelToday
+    """)
+    boolean hasFutureConfirmedReservation(
+            @Param("roomNumber") String roomNumber,
+            @Param("hotelToday") java.time.LocalDate hotelToday
+    );
 }

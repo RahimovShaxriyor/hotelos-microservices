@@ -33,13 +33,15 @@ public class RoomInventoryAvailabilityService {
             typed_rooms AS (
                 SELECT r.room_number
                 FROM reception.rooms r
-                WHERE r.room_type = :roomType
+                WHERE r.active = TRUE
+                  AND r.room_type = :roomType
             ),
             out_of_order_rooms AS (
                 SELECT d.business_date, r.room_number
                 FROM days d
                 CROSS JOIN reception.rooms r
-                WHERE r.room_type = :roomType
+                WHERE r.active = TRUE
+                  AND r.room_type = :roomType
                   AND r.engineering_status = 'OUT_OF_ORDER'
             ),
             current_stay_rooms AS (
@@ -157,6 +159,9 @@ public class RoomInventoryAvailabilityService {
                                                   UUID excludedReservationId) {
         RoomEntity room = roomRepository.findByRoomNumberForUpdate(roomNumber)
                 .orElseThrow(() -> new ResourceNotFoundException("Room not found: " + roomNumber));
+        if (!room.isActive()) {
+            throw new ConflictException("ROOM_INACTIVE", "Assigned room " + roomNumber + " is inactive");
+        }
         if (room.getType() != roomType) {
             throw new ConflictException("ROOM_TYPE_MISMATCH", "Assigned room does not match reservation room type");
         }

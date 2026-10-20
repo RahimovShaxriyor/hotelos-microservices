@@ -45,6 +45,7 @@ public class OpenApiConfig {
                 .tags(List.of(
                         new Tag().name("Authentication").description("Staff authentication, token lifecycle, and invitation acceptance"),
                         new Tag().name("Staff Administration").description("Staff identity governance, invitations, lifecycle management, and role assignment"),
+                        new Tag().name("Room Administration").description("Physical room inventory lifecycle, administrative updates, and safe occupancy reconciliation"),
                         new Tag().name("Reception — Reservations").description("Room reservation booking, availability search, modifications, cancellation, and room assignment"),
                         new Tag().name("Reception — Guests").description("Guest stay records, guest profiles, and guest profile management"),
                         new Tag().name("Reception — Rooms").description("Room inventory, physical room states, and sellability status"),

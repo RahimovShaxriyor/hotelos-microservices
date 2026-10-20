@@ -55,6 +55,9 @@ public class RoomEntity {
     @Column(name = "turnover_correlation_id", length = 64)
     private String turnoverCorrelationId;
 
+    @Column(name = "active", nullable = false)
+    private boolean active = true;
+
     @Column(name = "occupancy_changed_at", nullable = false)
     private Instant occupancyChangedAt;
 
@@ -73,13 +76,22 @@ public class RoomEntity {
         this(roomNumber, floor, type, proximity, nightlyRate, "UZS", occupancyStatus, housekeepingStatus, engineeringStatus,
                 cleanSince, turnoverPending, turnoverCorrelationId,
                 cleanSince != null ? cleanSince : Instant.now(),
-                cleanSince != null ? cleanSince : Instant.now());
+                cleanSince != null ? cleanSince : Instant.now(),
+                true);
     }
 
     public RoomEntity(String roomNumber, int floor, RoomType type, String proximity, BigDecimal nightlyRate, String currency,
                       OccupancyStatus occupancyStatus, HousekeepingStatus housekeepingStatus, EngineeringStatus engineeringStatus,
                       Instant cleanSince, boolean turnoverPending, String turnoverCorrelationId,
                       Instant occupancyChangedAt, Instant turnoverChangedAt) {
+        this(roomNumber, floor, type, proximity, nightlyRate, currency, occupancyStatus, housekeepingStatus, engineeringStatus,
+                cleanSince, turnoverPending, turnoverCorrelationId, occupancyChangedAt, turnoverChangedAt, true);
+    }
+
+    public RoomEntity(String roomNumber, int floor, RoomType type, String proximity, BigDecimal nightlyRate, String currency,
+                      OccupancyStatus occupancyStatus, HousekeepingStatus housekeepingStatus, EngineeringStatus engineeringStatus,
+                      Instant cleanSince, boolean turnoverPending, String turnoverCorrelationId,
+                      Instant occupancyChangedAt, Instant turnoverChangedAt, boolean active) {
         this.roomNumber = roomNumber;
         this.floor = floor;
         this.type = type;
@@ -94,6 +106,7 @@ public class RoomEntity {
         this.turnoverCorrelationId = turnoverCorrelationId;
         this.occupancyChangedAt = occupancyChangedAt != null ? occupancyChangedAt : Instant.now();
         this.turnoverChangedAt = turnoverChangedAt != null ? turnoverChangedAt : Instant.now();
+        this.active = active;
         this.createdAt = Instant.now();
     }
 
@@ -128,6 +141,9 @@ public class RoomEntity {
     public String getCurrency() { return currency; }
     public void setCurrency(String currency) { this.currency = currency; }
 
+    public boolean isActive() { return active; }
+    public void setActive(boolean active) { this.active = active; }
+
     public OccupancyStatus getOccupancyStatus() { return occupancyStatus; }
     public void setOccupancyStatus(OccupancyStatus occupancyStatus) { this.occupancyStatus = occupancyStatus; }
 
@@ -155,7 +171,8 @@ public class RoomEntity {
     public Instant getCreatedAt() { return createdAt; }
 
     public boolean isSellable() {
-        return occupancyStatus == OccupancyStatus.VACANT
+        return active
+                && occupancyStatus == OccupancyStatus.VACANT
                 && housekeepingStatus == HousekeepingStatus.CLEAN
                 && engineeringStatus == EngineeringStatus.OPERATIONAL
                 && !turnoverPending;

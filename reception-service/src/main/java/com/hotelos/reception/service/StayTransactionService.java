@@ -136,7 +136,8 @@ public class StayTransactionService {
             room = roomRepository.findByRoomNumberForUpdate(roomNum)
                     .orElseThrow(() -> new ResourceNotFoundException("Assigned room not found: " + roomNum));
 
-            if (room.getOccupancyStatus() != OccupancyStatus.VACANT
+            if (!room.isActive()
+                    || room.getOccupancyStatus() != OccupancyStatus.VACANT
                     || room.getHousekeepingStatus() != HousekeepingStatus.CLEAN
                     || room.getEngineeringStatus() != EngineeringStatus.OPERATIONAL
                     || room.isTurnoverPending()) {
@@ -320,7 +321,8 @@ public class StayTransactionService {
         RoomEntity targetRoom = roomRepository.findByRoomNumberForUpdate(request.targetRoomNumber()).orElseThrow();
 
         // Physical validation of target room
-        if (targetRoom.getOccupancyStatus() != OccupancyStatus.VACANT
+        if (!targetRoom.isActive()
+                || targetRoom.getOccupancyStatus() != OccupancyStatus.VACANT
                 || targetRoom.getHousekeepingStatus() != HousekeepingStatus.CLEAN
                 || targetRoom.getEngineeringStatus() != EngineeringStatus.OPERATIONAL
                 || targetRoom.isTurnoverPending()) {
